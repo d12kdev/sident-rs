@@ -12,4 +12,16 @@ pub enum DecoderError {
     InputTooLong,
     #[error("CRC does not match")]
     CrcDoesNotMatch,
+    #[error("Legacy/base protocol is not supported")]
+    LegacyNotSupported,
+}
+
+#[derive(Debug, Error)]
+pub enum DecodePacketError {
+    #[error("Input buffer is too short")]
+    InputTooShort,
+    #[error("Input response is NAK")]
+    InputIsNak,
+    #[error("Input buffer doesn't seem like matching the packet")]
+    WrongData,
 }

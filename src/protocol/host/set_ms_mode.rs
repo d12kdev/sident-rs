@@ -5,7 +5,7 @@ use crate::protocol::{pckt, HostPacket, MSMode};
 pckt!(SetMSMode, 0xF0);
 #[derive(Debug)]
 pub struct SetMSMode {
-    mode: MSMode
+    mode: MSMode,
 }
 
 impl SetMSMode {

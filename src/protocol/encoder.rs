@@ -11,6 +11,7 @@ pub struct Encoder {
     ensure_detection: bool,
 }
 
+// TODO: remove legacy protocol support
 impl Encoder {
     pub fn new(ensure_detection: bool) -> Self {
         Self { ensure_detection }
@@ -29,6 +30,7 @@ impl Encoder {
         }
     }
 
+    /// Encodes the input packet into bytes that are ready to be sent to the station
     pub fn encode<P: HostPacket>(&self, packet: P) -> BytesMut {
         let mut buffer = BytesMut::new();
 
@@ -48,6 +50,7 @@ impl Encoder {
             buffer.extend_from_slice(&data);
             buffer.put_u16_le(calculate_crc(&data));
         } else {
+            // WARN: The legacy protocol is deprecated, don't use it
             buffer.extend_from_slice(&data);
         }
 

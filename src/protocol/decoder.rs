@@ -4,15 +4,20 @@ use color_eyre::eyre::Result;
 use crate::protocol::calculate_crc;
 
 use super::{
-    consts::{ETX, STX},
+    consts::{ETX, NAK, STX},
     encoder::Encoder,
     errors::DecoderError,
     Response,
 };
 
-pub struct Decoder {}
+#[derive(Debug)]
+pub struct Decoder;
 
 impl Decoder {
+    pub fn new() -> Self {
+        Self
+    }
+
     pub fn decode(&self, input: &[u8]) -> Result<Response, DecoderError> {
         let mut input = BytesMut::from(input);
         // base:
@@ -30,6 +35,9 @@ impl Decoder {
         // ETX
 
         if input.len() < 4 {
+            if input.len() == 1 && input.get_u8() == NAK {
+                return Ok(Response::new_nak());
+            }
             return Err(DecoderError::InputTooShort);
         }
 
@@ -70,17 +78,16 @@ impl Decoder {
             crc_in.extend_from_slice(&data);
 
             if calculate_crc(&crc_in) == crc {
-                return Ok(Response {
-                    protocol_mode: super::ProtocolMode::Extended,
-                    packet_id: command_code,
+                return Ok(Response::new(
+                    super::ProtocolMode::Extended,
+                    command_code,
                     data,
-                });
+                ));
             } else {
                 return Err(DecoderError::CrcDoesNotMatch);
             }
         } else {
-            // TODO decoder - handle base protocol
-            todo!("decoder - handle base protocol")
+            return Err(DecoderError::LegacyNotSupported);
         }
     }
 }
@@ -90,15 +97,13 @@ mod tests {
     use bytes::BytesMut;
 
     use crate::protocol::{
-        consts::{ETX, STX},
-        decoder::Decoder,
-        Response,
+        consts::{ETX, STX}, decoder::Decoder, station, Baudrate, Response
     };
 
     #[test]
     fn test_decode() {
         let bytes_vec: Vec<u8> = vec![STX, 0xF0, 0x03, 0x01, 0x02, 0x53, 0xFE, 0x31, ETX];
-        let decoded = Decoder {}.decode(&bytes_vec).unwrap();
+        let decoded = Decoder::new().decode(&bytes_vec).unwrap();
         let _assert_bytes: &[u8] = &vec![0x01, 0x02, 0x53];
         assert_eq!(
             decoded,
@@ -108,5 +113,13 @@ mod tests {
                 BytesMut::from(_assert_bytes)
             )
         );
+    }
+
+    #[test]
+    fn test_decode_set_baudrate_response() {
+        let bytes_vec: Vec<u8> = vec![STX, 0xFE, 0x03, 0x00, 0x00, 0x01, 0x05, 0xBC, ETX];
+        let decoded: station::SetBaudrateResponse = Decoder::new().decode(&bytes_vec).unwrap().into_packet().unwrap();
+        assert_eq!(decoded.baudrate, Baudrate::High);
+        assert_eq!(decoded.station_code, 0);
     }
 }
