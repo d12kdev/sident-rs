@@ -6,3 +6,6 @@ pub use set_baudrate::*;
 
 mod erase_backup_data;
 pub use erase_backup_data::*;
+
+mod get_system_value;
+pub use get_system_value::*;

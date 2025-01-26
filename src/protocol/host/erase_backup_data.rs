@@ -1,6 +1,5 @@
 use crate::protocol::{pckt, HostPacket};
 
-
 pckt!(EraseBackupData, 0xF5);
 #[derive(Debug)]
 pub struct EraseBackupData;

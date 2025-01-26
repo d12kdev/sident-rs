@@ -36,6 +36,11 @@ impl Response {
         if self.is_nak {
             return Err(DecodePacketError::InputIsNak);
         }
+
+        if self.packet_id != P::PACKET_ID {
+            return Err(DecodePacketError::WrongPacketId);
+        }
+
         P::decode(&self.data)
     }
 }

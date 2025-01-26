@@ -97,7 +97,9 @@ mod tests {
     use bytes::BytesMut;
 
     use crate::protocol::{
-        consts::{ETX, STX}, decoder::Decoder, station, Baudrate, Response
+        consts::{ETX, STX},
+        decoder::Decoder,
+        station, Baudrate, Response,
     };
 
     #[test]
@@ -118,7 +120,11 @@ mod tests {
     #[test]
     fn test_decode_set_baudrate_response() {
         let bytes_vec: Vec<u8> = vec![STX, 0xFE, 0x03, 0x00, 0x00, 0x01, 0x05, 0xBC, ETX];
-        let decoded: station::SetBaudrateResponse = Decoder::new().decode(&bytes_vec).unwrap().into_packet().unwrap();
+        let decoded: station::SetBaudrateResponse = Decoder::new()
+            .decode(&bytes_vec)
+            .unwrap()
+            .into_packet()
+            .unwrap();
         assert_eq!(decoded.baudrate, Baudrate::High);
         assert_eq!(decoded.station_code, 0);
     }

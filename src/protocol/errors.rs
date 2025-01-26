@@ -18,6 +18,8 @@ pub enum DecoderError {
 
 #[derive(Debug, Error)]
 pub enum DecodePacketError {
+    #[error("Wrong packet id")]
+    WrongPacketId,
     #[error("Input buffer is too short")]
     InputTooShort,
     #[error("Input response is NAK")]

@@ -11,6 +11,9 @@ pub mod errors;
 mod response;
 pub use response::*;
 
+mod protocol_config;
+pub use protocol_config::*;
+
 mod crc;
 pub use crc::*;
 
