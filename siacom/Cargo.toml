@@ -1,0 +1,16 @@
+[package]
+name = "siacom"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+futures = "0.3.31"
+jni = "0.21.1"
+log = "0.4.27"
+ndk-context = "0.1.1"
+nusb = "0.1.14"
+pin-project = "1.1.10"
+tokio = { version = "1.46.1", features = ["io-util", "rt", "rt-multi-thread", "sync", "time"] }
+
+[lib]
+crate-type = ["lib"]
