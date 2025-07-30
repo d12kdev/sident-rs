@@ -29,7 +29,7 @@ impl HostboundPacket for GetSICardNewerResponse {
 pub struct GetSICard6Response {
     pub station_code: u16,
     pub block_number: u8,
-    pub data: [u8; 128]
+    pub data: [u8; 128],
 }
 
 impl Packet for GetSICard6Response {
@@ -44,22 +44,20 @@ impl HostboundPacket for GetSICard6Response {
 
         let station_code = u16::from_be_bytes([data[0], data[1]]);
         let block_number = data[2];
-        let data: [u8; 128]  = data[3..].try_into().unwrap();
+        let data: [u8; 128] = data[3..].try_into().unwrap();
 
-        Ok(
-            Self {
-                station_code,
-                block_number,
-                data
-            }
-        )
+        Ok(Self {
+            station_code,
+            block_number,
+            data,
+        })
     }
 }
 
 #[derive(Debug)]
 pub struct GetSICard5Response {
     pub station_code: u16,
-    pub data: [u8; 128]
+    pub data: [u8; 128],
 }
 
 impl Packet for GetSICard5Response {
@@ -75,11 +73,6 @@ impl HostboundPacket for GetSICard5Response {
         let station_code = u16::from_be_bytes([data[0], data[1]]);
         let data: [u8; 128] = data[2..].try_into().unwrap();
 
-        Ok(
-            Self {
-                station_code,
-                data
-            }
-        )
+        Ok(Self { station_code, data })
     }
 }

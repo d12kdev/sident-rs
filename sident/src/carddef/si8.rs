@@ -1,3 +1,4 @@
+// TODO: REWRITE WITH SI DOCS
 /*
     SPORTident Card-8 Memory Structure
 
@@ -19,7 +20,12 @@
     ----            ----
 */
 
-use crate::{card::CardPersonalData, carddef::{BlockNeededIntention, BlockNeededResult, CardDefinition}, errors::{DeserializeBlockError, DeserializeCardPersonalDataError}, punch::Punch};
+use crate::{
+    card::CardPersonalData,
+    carddef::{BlockNeededIntention, BlockNeededResult, CardDefinition},
+    errors::{DeserializeBlockError, DeserializeCardPersonalDataError},
+    punch::Punch,
+};
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
@@ -35,7 +41,7 @@ struct Block0 {
     #[cfg_attr(feature = "serde", serde(with = "serde_big_array::BigArray"))]
     #[cfg_attr(feature = "ts-rs", ts(type = "[number; 96]"))]
     card_personal_data1: [u8; 96],
-    personal_data_finished: bool
+    personal_data_finished: bool,
 }
 
 impl Block0 {
@@ -47,20 +53,19 @@ impl Block0 {
         let punch_count = data[22];
         let siid = u32::from_be_bytes([0, data[25], data[26], data[27]]);
         let card_personal_data1: [u8; 96] = data[32..].try_into().unwrap(); // cant fail 
-        let personal_data_finished = [card_personal_data1[94], card_personal_data1[95]] == [0x00, 0x00];
+        let personal_data_finished =
+            [card_personal_data1[94], card_personal_data1[95]] == [0x00, 0x00];
 
-        return Ok(
-            Self {
-                _uid: uid,
-                clear_check,
-                start,
-                finish,
-                punch_count,
-                siid,
-                card_personal_data1,
-                personal_data_finished
-            }
-        )
+        return Ok(Self {
+            _uid: uid,
+            clear_check,
+            start,
+            finish,
+            punch_count,
+            siid,
+            card_personal_data1,
+            personal_data_finished,
+        });
     }
 }
 
@@ -70,7 +75,7 @@ impl Block0 {
 #[derive(Debug, Clone)]
 struct Block1 {
     card_personal_data2: [u8; 8],
-    punches: Vec<Punch>
+    punches: Vec<Punch>,
 }
 
 impl Block1 {
@@ -81,16 +86,16 @@ impl Block1 {
         let mut punches: Vec<Punch> = Vec::new();
         for punch_chunk in punches_bytes.chunks(4) {
             let punch_chunk: &[u8; 4] = punch_chunk.try_into().unwrap();
-            if *punch_chunk == [0xEE, 0xEE, 0xEE, 0xEE] { break; }
+            if *punch_chunk == [0xEE, 0xEE, 0xEE, 0xEE] {
+                break;
+            }
             punches.push(Punch::deserialize(punch_chunk)?);
         }
 
-        return Ok(
-            Self {
-                card_personal_data2,
-                punches
-            }
-        )
+        return Ok(Self {
+            card_personal_data2,
+            punches,
+        });
     }
 }
 
@@ -100,12 +105,18 @@ impl Block1 {
 #[derive(Debug)]
 pub struct Card8Def {
     block0: Option<Block0>,
-    block1: Option<Block1>
+    block1: Option<Block1>,
 }
 
 impl CardDefinition for Card8Def {
+    const HAS_CARD_EXCLUSIVES: bool = false;
+    type CardExclusivesType = ();
+
     fn new_empty() -> Self {
-        Self { block0: None, block1: None }
+        Self {
+            block0: None,
+            block1: None,
+        }
     }
 
     fn has_block(&self, block_id: u8) -> bool {
@@ -187,13 +198,11 @@ impl CardDefinition for Card8Def {
                 } else {
                     return BlockNeededResult::Need(0);
                 }
-            },
-            BlockNeededIntention::Punches => {
-                match &self.block1 {
-                    Some(_) => BlockNeededResult::NoNeed,
-                    None => BlockNeededResult::Need(1)
-                }
             }
+            BlockNeededIntention::Punches => match &self.block1 {
+                Some(_) => BlockNeededResult::NoNeed,
+                None => BlockNeededResult::Need(1),
+            },
         }
     }
 }

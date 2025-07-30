@@ -1,7 +1,8 @@
+use std::time::Duration;
+
 pub use impl_shared::*;
 
-use crate::{MsMode, SystemConfig};
-
+use crate::{codec::SICodecTimeout, MsMode, SystemConfig};
 
 #[cfg(target_os = "android")]
 type ConnectionStream = siacom::SIAndroidCom;
@@ -12,27 +13,32 @@ type ConnectionStream = tokio_serial::SerialStream;
 pub struct Connection {
     stream: ConnectionStream,
     ms_mode: MsMode,
-    station_sys_config: SystemConfig,
-    timeout_ms: u64
+    station_sys_config: SystemConfig
 }
 
 #[cfg(not(target_os = "android"))]
 mod impl_not_android {
     use std::time::Duration;
-    
+
     use tokio::io::AsyncWriteExt;
 
     use log::info;
     use tokio_serial::{SerialPort, SerialPortBuilderExt};
 
+    use crate::{
+        Baudrate, MsMode, SystemConfig, SystemValueDataAddressAndLength,
+        codec::consts::STX,
+        connection::Connection,
+        errors::NewConnectionError,
+        packets::{hostbound::GetSystemValueResponse, stationbound::GetSystemValue},
+    };
 
-    use crate::{codec::consts::STX, connection::Connection, errors::NewConnectionError, packets::{hostbound::GetSystemValueResponse, stationbound::GetSystemValue}, Baudrate, MsMode, SystemConfig, SystemValueDataAddressAndLength};
-
-    
     impl super::Connection {
         pub async fn new(port_name: &str) -> Result<Self, NewConnectionError> {
             async fn msmmaster(conn: &mut Connection) -> Result<(), NewConnectionError> {
-                if !conn.set_ms_mode(MsMode::Master).await? { return Err(NewConnectionError::FailedToSetMsMode); }
+                if !conn.set_ms_mode(MsMode::Master).await? {
+                    return Err(NewConnectionError::FailedToSetMsMode);
+                }
                 return Ok(());
             }
 
@@ -59,7 +65,6 @@ mod impl_not_android {
                 stream: port,
                 ms_mode: MsMode::Master,
                 station_sys_config: SystemConfig::default(),
-                timeout_ms: 5000
             };
 
             info!("try 1 - high baudrate, extended protocol");
@@ -71,7 +76,10 @@ mod impl_not_android {
             let msm_result = msmmaster(&mut conn).await;
 
             if msm_result.is_err() {
-                info!("did not get response at high baudrate: {:?}", msm_result.err().unwrap());
+                info!(
+                    "did not get response at high baudrate: {:?}",
+                    msm_result.err().unwrap()
+                );
                 info!("trying low baudrate fallback");
                 conn.stream.set_baud_rate(Baudrate::Low.actual_baudrate())?;
                 msmmaster(&mut conn).await?;
@@ -95,34 +103,41 @@ mod impl_not_android {
     }
 }
 
-
 #[cfg(target_os = "android")]
 mod impl_android {
 
     use std::time::Duration;
 
-    use log::{info};
+    use crate::{
+        Baudrate, MsMode, SystemConfig, SystemValueDataAddressAndLength,
+        codec::consts::STX,
+        connection::Connection,
+        errors::NewConnectionError,
+        packets::{hostbound::GetSystemValueResponse, stationbound::GetSystemValue},
+    };
+    use log::info;
     use siacom::SIAndroidCom;
     use tokio::io::AsyncWriteExt;
-    use crate::{codec::consts::STX, connection::Connection, errors::NewConnectionError, packets::{hostbound::GetSystemValueResponse, stationbound::{GetSystemValue}}, Baudrate, MsMode, SystemConfig, SystemValueDataAddressAndLength};
-
 
     impl super::Connection {
         pub async fn new() -> Result<Self, NewConnectionError> {
-
             info!("creating new connection");
             let mut serial = SIAndroidCom::new().await?;
             info!("setting baudrate to high");
-            serial.set_baud_rate(Baudrate::High.actual_baudrate()).await?;
+            serial
+                .set_baud_rate(Baudrate::High.actual_baudrate())
+                .await?;
             let mut conn = Connection {
                 stream: serial,
                 ms_mode: crate::MsMode::Master,
                 station_sys_config: SystemConfig::default(),
-                timeout_ms: 5000
+                timeout_ms: 5000,
             };
 
             async fn msmmaster(conn: &mut Connection) -> Result<(), NewConnectionError> {
-                if !conn.set_ms_mode(MsMode::Master).await? { return Err(NewConnectionError::FailedToSetMsMode); }
+                if !conn.set_ms_mode(MsMode::Master).await? {
+                    return Err(NewConnectionError::FailedToSetMsMode);
+                }
                 return Ok(());
             }
 
@@ -130,7 +145,7 @@ mod impl_android {
             //conn.stream.flush().await?;
 
             info!("trying to handshake with the station");
-            
+
             info!("try 1 - high baudrate");
             info!("sending 0xFF and STX");
             conn.stream.write_all(&[0xFF]).await?;
@@ -140,9 +155,14 @@ mod impl_android {
             let msm_result = msmmaster(&mut conn).await;
 
             if msm_result.is_err() {
-                info!("did not get response at high baudrate: {:?}", msm_result.err().unwrap());
+                info!(
+                    "did not get response at high baudrate: {:?}",
+                    msm_result.err().unwrap()
+                );
                 info!("trying low baudrate fallback");
-                conn.stream.set_baud_rate(Baudrate::Low.actual_baudrate()).await?;
+                conn.stream
+                    .set_baud_rate(Baudrate::Low.actual_baudrate())
+                    .await?;
                 msmmaster(&mut conn).await?;
                 info!("got response at low baudrate");
             } else {
@@ -164,30 +184,45 @@ mod impl_android {
 }
 
 
+pub static TIMEOUT_DEFAULT: once_cell::sync::Lazy<SICodecTimeout> = once_cell::sync::Lazy::new(|| {
+    SICodecTimeout::Finite(Duration::from_millis(1000))
+});
+
+
 mod impl_shared {
-    use std::time::Duration;
 
     use log::{info, warn};
     #[allow(unused_imports)]
     use tokio::io::AsyncWriteExt;
 
     use crate::{
-        card::{CardPersonalData, CardType}, carddef::{si10::Card10Def, si11::Card11Def, si8::Card8Def, siac::ActiveCardDef, BlockNeededIntention, BlockNeededResult, CardDefinition}, codec::SICodec, dedup_enum_array, errors::{ConnectionOperationError, ReadoutError, ReadoutResultTransformationError, ReceivePacketError, ReceiveRawPacketError, SimpleActionError}, generate_readout_fn, packet::{HostboundPacket, RawPacket, StationboundPacket}, packets::{
+        card::{CardPersonalData, CardType}, carddef::{
+            si10::Card10Def, si11::Card11Def, si8::Card8Def, siac::ActiveCardDef, BlockNeededIntention, BlockNeededResult, CardDefinition
+        }, codec::{SICodec, SICodecTimeout}, connection::TIMEOUT_DEFAULT, dedup_enum_array, errors::{
+            ConnectionOperationError, ReadoutError, ReadoutResultTransformationError,
+            ReceivePacketError, ReceiveRawPacketError, SimpleActionError,
+        }, generate_readout_fn, packet::{HostboundPacket, RawPacket, StationboundPacket}, packets::{
             hostbound::{GetSICardNewerResponse, SetMsModeResponse},
             stationbound::{BeepIfStationReady, GetSICardNewer, SetMsMode},
         }, punch::Punch, MsMode, SUPPORTED_CARDS
     };
-    
+
     use super::Connection;
 
     impl super::Connection {
-        pub async fn beep_if_station_ready(&mut self, beep_count: u8) -> Result<(), SimpleActionError> {
+        pub async fn beep_if_station_ready(
+            &mut self,
+            beep_count: u8,
+        ) -> Result<(), SimpleActionError> {
             self.send_packet(&BeepIfStationReady { beep_count }).await?;
             self.receive_and_ignore_packet().await?;
             return Ok(());
         }
 
-        pub async fn set_ms_mode(&mut self, mode: MsMode) -> Result<bool, ConnectionOperationError> {
+        pub async fn set_ms_mode(
+            &mut self,
+            mode: MsMode,
+        ) -> Result<bool, ConnectionOperationError> {
             info!("changing msmode to {:?}", mode);
 
             self.send_packet(&SetMsMode { mode }).await?;
@@ -212,24 +247,40 @@ mod impl_shared {
             return Ok(());
         }
 
-        pub async fn receive_raw_packet(&mut self) -> Result<RawPacket, ReceiveRawPacketError> {
-            let rp = SICodec::deserialize_raw_packet_reader(&mut self.stream, Some(Duration::from_millis(self.timeout_ms))).await?;
+        pub async fn receive_raw_packet_custom(&mut self, stx_timeout: SICodecTimeout, timeout: SICodecTimeout) -> Result<RawPacket, ReceiveRawPacketError> {
+            let rp = SICodec::deserialize_raw_packet_reader(
+                &mut self.stream,
+                stx_timeout,
+                timeout
+            ).await?;
             info!("RAW: STATION -> HOST: {:?}", rp);
             return Ok(rp);
+        }
+
+        pub async fn receive_raw_packet(&mut self) -> Result<RawPacket, ReceiveRawPacketError> {
+            return self.receive_raw_packet_custom(*TIMEOUT_DEFAULT, *TIMEOUT_DEFAULT).await;
+        }
+
+        pub async fn receive_packet_custom<P: HostboundPacket>(&mut self, stx_timeout: SICodecTimeout, timeout: SICodecTimeout)  -> Result<P, ReceivePacketError> {
+            let p = self.receive_raw_packet_custom(stx_timeout, timeout).await?.deserialize_packet::<P>()?;
+            info!("STATION -> HOST: {:?}", p);
+            return Ok(p);
         }
 
         pub async fn receive_packet<P: HostboundPacket>(
             &mut self,
         ) -> Result<P, ReceivePacketError> {
-            let p = self.receive_raw_packet().await?.deserialize_packet::<P>()?;
-            info!("STATION -> HOST: {:?}", p);
-            return Ok(p);
+            return self.receive_packet_custom(*TIMEOUT_DEFAULT, *TIMEOUT_DEFAULT).await;
+        }
+
+        pub async fn receive_and_ignore_packet_custom(&mut self, stx_timeout: SICodecTimeout, timeout: SICodecTimeout) -> Result<(), ReceiveRawPacketError> {
+            self.receive_raw_packet_custom(stx_timeout, timeout).await?;
+            info!("PACKET IGNORED");
+            return Ok(());
         }
 
         pub async fn receive_and_ignore_packet(&mut self) -> Result<(), ReceiveRawPacketError> {
-            self.receive_raw_packet().await?;
-            info!("PACKET IGNORED");
-            return Ok(());
+            return self.receive_and_ignore_packet_custom(*TIMEOUT_DEFAULT, *TIMEOUT_DEFAULT).await;
         }
 
         generate_readout_fn!(readout_activecard, ActiveCard, ActiveCardDef);
@@ -237,15 +288,27 @@ mod impl_shared {
         generate_readout_fn!(readout_card11, Card11, Card11Def);
         generate_readout_fn!(readout_card8, Card8, Card8Def);
 
-        pub async fn read_out(&mut self, preferences: &[ReadoutPreference], siid: u32) -> Result<ReadoutResult, ReadoutError> {
+        pub async fn read_out(
+            &mut self,
+            preferences: &[ReadoutPreference],
+            siid: u32,
+        ) -> Result<ReadoutResult, ReadoutError> {
             let card_type = CardType::from_siid(siid).ok_or(ReadoutError::CouldNotGetCardType)?;
 
             let res = match card_type {
-                CardType::Card8 => ReadoutResult::Card8(self.readout_card8(preferences, siid).await?),
-                CardType::Card10 => ReadoutResult::Card10(self.readout_card10(preferences, siid).await?),
-                CardType::Card11 => ReadoutResult::Card11(self.readout_card11(preferences, siid).await?),
-                CardType::ActiveCard => ReadoutResult::ActiveCard(self.readout_activecard(preferences, siid).await?),
-                _ => return Err(ReadoutError::CardNotSupported(card_type))
+                CardType::Card8 => {
+                    ReadoutResult::Card8(self.readout_card8(preferences, siid).await?)
+                }
+                CardType::Card10 => {
+                    ReadoutResult::Card10(self.readout_card10(preferences, siid).await?)
+                }
+                CardType::Card11 => {
+                    ReadoutResult::Card11(self.readout_card11(preferences, siid).await?)
+                }
+                CardType::ActiveCard => {
+                    ReadoutResult::ActiveCard(self.readout_activecard(preferences, siid).await?)
+                }
+                _ => return Err(ReadoutError::CardNotSupported(card_type)),
             };
 
             return Ok(res);
@@ -318,6 +381,12 @@ mod impl_shared {
         Punches,
     }
 
+    impl ReadoutPreference {
+        pub fn all() -> [Self; 2] {
+            return [ReadoutPreference::CardPersonalData, ReadoutPreference::Punches];
+        }
+    }
+
     #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
     #[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
     #[cfg_attr(feature = "ts-rs", ts(export))]
@@ -326,11 +395,13 @@ mod impl_shared {
         Card8(Card8Def),
         Card10(Card10Def),
         Card11(Card11Def),
-        ActiveCard(ActiveCardDef)
+        ActiveCard(ActiveCardDef),
     }
 
     impl ReadoutResult {
-        pub fn to_general_readout(&self) -> Result<GeneralReadout, ReadoutResultTransformationError> {
+        pub fn to_general_readout(
+            &self,
+        ) -> Result<GeneralReadout, ReadoutResultTransformationError> {
             let x: GeneralReadout = self.try_into()?;
             return Ok(x);
         }
@@ -346,7 +417,7 @@ mod impl_shared {
         pub clear_check: Punch,
         pub start: Option<Punch>,
         pub finish: Option<Punch>,
-        pub punches: Vec<Punch>
+        pub punches: Vec<Punch>,
     }
 
     impl TryFrom<ReadoutResult> for GeneralReadout {
@@ -361,44 +432,43 @@ mod impl_shared {
         type Error = ReadoutResultTransformationError;
 
         fn try_from(value: &ReadoutResult) -> Result<Self, Self::Error> {
-            fn inner<DEF: CardDefinition>(def: &DEF) -> Result<GeneralReadout, ReadoutResultTransformationError> {
+            fn inner<DEF: CardDefinition>(
+                def: &DEF,
+            ) -> Result<GeneralReadout, ReadoutResultTransformationError> {
                 type E = ReadoutResultTransformationError;
                 let siid = def.get_siid().ok_or(E::SiidNone)?;
                 let personal_data = match def.get_personal_data() {
                     Some(res) => Some(res?),
-                    None => None
+                    None => None,
                 };
                 let clear_check = def.get_clear_check().ok_or(E::ClearCheckNone)?;
                 let start = match def.get_start() {
                     Some(maybe) => maybe,
-                    None => None
+                    None => None,
                 };
                 let finish = match def.get_start() {
                     Some(maybe) => maybe,
-                    None => None
+                    None => None,
                 };
                 let punches = def.get_punches().ok_or(E::PunchesNone)?;
 
-                return Ok(
-                    GeneralReadout {
-                        siid,
-                        personal_data,
-                        clear_check,
-                        start,
-                        finish,
-                        punches
-                    }
-                );
+                return Ok(GeneralReadout {
+                    siid,
+                    personal_data,
+                    clear_check,
+                    start,
+                    finish,
+                    punches,
+                });
             }
 
             type X = ReadoutResult;
 
             return match value {
                 X::Card8(def) => inner(def),
-                X::Card10(def)
-                | X::Card11(def) => inner(def),
-                X::ActiveCard(def) => inner(def)
-            }
+                X::Card10(def) | X::Card11(def) => inner(def),
+                X::ActiveCard(def) => inner(def),
+            };
         }
     }
 }

@@ -23,7 +23,7 @@ pub enum NewConnectionError {
     #[error("Try from slice error {0}")]
     TryFromSliceError(#[from] TryFromSliceError),
     #[error("Failed to set msmode to MASTER")]
-    FailedToSetMsMode
+    FailedToSetMsMode,
 }
 
 #[derive(Debug, Error)]
@@ -43,7 +43,7 @@ pub enum ReceivePacketError {
     #[error("receive raw packet error {0}")]
     ReceiveRawPacketError(#[from] ReceiveRawPacketError),
     #[error("deserialize packet error: {0}")]
-    DeserializePacketError(#[from] DeserializePacketError)
+    DeserializePacketError(#[from] DeserializePacketError),
 }
 
 #[derive(Debug, Error)]
@@ -168,7 +168,7 @@ pub enum ReadoutResultTransformationError {
     #[error("Deserialize card personal data error: {0}")]
     DeserializeCardPersonalDataError(#[from] DeserializeCardPersonalDataError),
     #[error("Punches are None")]
-    PunchesNone
+    PunchesNone,
 }
 
 #[derive(Debug, Error)]

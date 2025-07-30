@@ -52,7 +52,6 @@
     Every 4 bytes is a punch - if all 4 bytes are 0xEE then you can stop parsing because there will be no more punches - but you have the punch count to be safe.
 */
 
-
 use chrono::NaiveDate;
 
 use crate::{
@@ -272,12 +271,7 @@ pub struct Card10DefExclusivesB3 {
 }
 
 impl Card10Def {
-    pub fn get_exclusives(
-        &self,
-    ) -> (
-        Option<Card10DefExclusivesB0>,
-        Option<Card10DefExclusivesB3>,
-    ) {
+    pub fn get_exclusives(&self) -> (Option<Card10DefExclusivesB0>, Option<Card10DefExclusivesB3>) {
         let mut result = (None, None);
 
         if let Some(block0) = &self.block0.as_ref() {
@@ -305,6 +299,35 @@ impl Card10Def {
 }
 
 impl CardDefinition for Card10Def {
+    const HAS_CARD_EXCLUSIVES: bool = true;
+    type CardExclusivesType = (Option<Card10DefExclusivesB0>, Option<Card10DefExclusivesB3>);
+    fn get_exclusives(&self) -> Option<Self::CardExclusivesType> {
+        let mut result = (None, None);
+
+        if let Some(block0) = &self.block0.as_ref() {
+            result.0 = Some(Card10DefExclusivesB0 {
+                uid: block0.uid,
+                production_date_month: block0.production_date_month,
+                production_date_year: block0.production_date_year,
+            })
+        }
+
+        if let Some(block3) = &self.block3.as_ref() {
+            result.1 = Some(Card10DefExclusivesB3 {
+                clear_check_reserve: block3.clear_check_reserve,
+                hw_version: block3.hw_version,
+                sw_version: block3.sw_version,
+                clear_count: block3.clear_count,
+                start_reserve: block3.start_reserve,
+                finish_reserve: block3.finish_reserve,
+                prod_date: block3.prod_date
+            })
+        }
+
+        return Some(result);
+    }
+
+
     fn new_empty() -> Self {
         Self {
             block0: None,

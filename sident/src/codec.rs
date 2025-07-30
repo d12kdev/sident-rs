@@ -22,6 +22,12 @@ pub mod consts {
     pub const DLE: u8 = 0x10;
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum SICodecTimeout {
+    Infinite,
+    Finite(Duration)
+}
+
 #[derive(Debug, Default)]
 pub struct SICodec;
 
@@ -94,21 +100,39 @@ impl SICodec {
         data: &Vec<u8>,
     ) -> Result<RawPacket, DeserializeRawPacketError> {
         let cursor = Cursor::new(data);
-        Self::deserialize_raw_packet_reader(cursor, None).await
+        Self::deserialize_raw_packet_reader(cursor, SICodecTimeout::Finite(Duration::from_millis(1)), SICodecTimeout::Finite(Duration::from_millis(1))).await
     }
 
     pub async fn deserialize_raw_packet_reader<R>(
         mut reader: R,
-        timeout: Option<Duration>,
+        stx_timeout: SICodecTimeout,
+        timeout: SICodecTimeout
     ) -> Result<RawPacket, DeserializeRawPacketError>
     where
         R: AsyncRead + Unpin,
     {
-        let timeout = timeout.unwrap_or(Duration::from_millis(1000));
+
+        async fn read_w_timeout<R: AsyncRead + Unpin>(reader: &mut R, buf: &mut [u8], timeout: &SICodecTimeout) -> Result<usize, DeserializeRawPacketError> {
+            match timeout {
+                SICodecTimeout::Finite(dur) => {
+                    match tokio::time::timeout(*dur, reader.read_exact(buf)).await {
+                        Ok(Ok(n)) => Ok(n),
+                        Ok(Err(e)) => Err(DeserializeRawPacketError::IoError(e)),
+                        Err(_) => Err(DeserializeRawPacketError::TimedOut),
+                    }
+                },
+                SICodecTimeout::Infinite => {
+                    reader.read_exact(buf).await.map_err(|e| DeserializeRawPacketError::IoError(e))
+                }
+            }
+        }
+
+
         let mut final_buffer: Vec<u8> = Vec::new();
         let mut buf = [0u8; 1];
         let start_time = Instant::now();
 
+        #[derive(PartialEq, Eq)]
         enum ParseState {
             WaitingForStart,
             ReadingHeader,
@@ -133,12 +157,22 @@ impl SICodec {
         let mut crc = 0u16;
 
         loop {
-            if start_time.elapsed() >= timeout {
-                return Err(DeserializeRawPacketError::TimedOut);
+            if let SICodecTimeout::Finite(timeout) = timeout {
+                if state != ParseState::WaitingForStart && start_time.elapsed() >= timeout {
+                    return Err(DeserializeRawPacketError::TimedOut);
+                }
             }
 
-            match tokio::time::timeout(timeout, reader.read_exact(&mut buf)).await {
-                Ok(Ok(1)) => {
+            if let SICodecTimeout::Finite(timeout) = stx_timeout {
+                if state == ParseState::WaitingForStart && start_time.elapsed() >= timeout {
+                    return Err(DeserializeRawPacketError::TimedOut);
+                }
+            }
+
+            let read_timeout = if state == ParseState::WaitingForStart { &stx_timeout } else { &timeout };
+
+            match read_w_timeout(&mut reader, &mut buf, read_timeout).await {
+                Ok(1) => {
                     let byte = buf[0];
                     final_buffer.push(byte);
 
@@ -214,10 +248,9 @@ impl SICodec {
                             }
                         }
                     }
-                }
-                Ok(Ok(_)) => return Err(DeserializeRawPacketError::ParseError),
-                Ok(Err(e)) => return Err(DeserializeRawPacketError::IoError(e)),
-                Err(_) => return Err(DeserializeRawPacketError::TimedOut)
+                },
+                Ok(_) => return Err(DeserializeRawPacketError::ParseError),
+                Err(e) => return Err(e)
             }
         }
 

@@ -24,7 +24,7 @@ mod sys_config;
 
 pub use sys_config::*;
 
-use crate::card::CardType;
+use crate::{card::CardType, codec::SICodecTimeout};
 
 pub fn is_extended_packet_id(id: u8) -> bool {
     if id < 0x80 || id == 0xC4 {
@@ -33,4 +33,13 @@ pub fn is_extended_packet_id(id: u8) -> bool {
     true
 }
 
-pub const SUPPORTED_CARDS: [CardType; 4] = [CardType::ActiveCard, CardType::Card10, CardType::Card11, CardType::Card8];
+pub const SUPPORTED_CARDS: [CardType; 4] = [
+    CardType::ActiveCard,
+    CardType::Card10,
+    CardType::Card11,
+    CardType::Card8,
+];
+
+pub fn td() -> SICodecTimeout {
+    return *connection::TIMEOUT_DEFAULT;
+}

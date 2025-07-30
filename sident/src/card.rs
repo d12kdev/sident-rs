@@ -1,6 +1,5 @@
 use crate::{codec::SICodec, errors::DeserializeCardPersonalDataError};
 
-
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[cfg_attr(feature = "ts-rs", ts(export))]

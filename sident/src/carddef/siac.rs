@@ -272,13 +272,10 @@ pub struct ActiveCardDefExclusivesB3 {
     pub finish_reserve: Option<Punch>,
 }
 
-impl ActiveCardDef {
-    pub fn get_exclusives(
-        &self,
-    ) -> (
-        Option<ActiveCardDefExclusivesB0>,
-        Option<ActiveCardDefExclusivesB3>,
-    ) {
+impl CardDefinition for ActiveCardDef {
+    const HAS_CARD_EXCLUSIVES: bool = true;
+    type CardExclusivesType = (Option<ActiveCardDefExclusivesB0>, Option<ActiveCardDefExclusivesB3>);
+    fn get_exclusives(&self) -> Option<Self::CardExclusivesType> {
         let mut result = (None, None);
 
         if let Some(block0) = &self.block0.as_ref() {
@@ -301,11 +298,10 @@ impl ActiveCardDef {
             })
         }
 
-        return result;
+        return Some(result);
     }
-}
 
-impl CardDefinition for ActiveCardDef {
+
     fn new_empty() -> Self {
         Self {
             block0: None,

@@ -49,11 +49,10 @@ impl HostboundPacket for SICard6Detected {
     }
 }
 
-
 #[derive(Debug)]
 pub struct SICard5Detected {
     pub station_code: u16,
-    pub siid: u32
+    pub siid: u32,
 }
 
 impl Packet for SICard5Detected {
@@ -69,11 +68,6 @@ impl HostboundPacket for SICard5Detected {
         let station_code = u16::from_be_bytes([data[0], data[1]]);
         let siid = u32::from_be_bytes([0, data[3], data[4], data[5]]);
 
-        return Ok(
-            Self {
-                station_code,
-                siid
-            }
-        )
+        return Ok(Self { station_code, siid });
     }
 }

@@ -46,7 +46,9 @@ pub struct Punch {
 }
 
 impl Punch {
-    pub fn deserialize_control_punch(data: &[u8; 4]) -> Result<Option<Self>, DeserializePunchError> {
+    pub fn deserialize_control_punch(
+        data: &[u8; 4],
+    ) -> Result<Option<Self>, DeserializePunchError> {
         if *data == [0xEE, 0xEE, 0xEE, 0xEE] {
             return Ok(None);
         }
@@ -67,11 +69,10 @@ impl Punch {
         };
 
         let day_of_week = (td_byte & PunchFlags::DAY_OF_WEEK.bits()) >> 1;
-        let day_of_week = DayOfWeek::try_from_primitive(day_of_week)
-            .map_err(|e| {
-                error!("{}", e.to_string());
-                return DeserializePunchError::InvalidDay
-            })?;
+        let day_of_week = DayOfWeek::try_from_primitive(day_of_week).map_err(|e| {
+            error!("{}", e.to_string());
+            return DeserializePunchError::InvalidDay;
+        })?;
 
         let station_code = ((td_byte & 64) << 2) + cn_byte;
 

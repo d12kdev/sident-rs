@@ -5,9 +5,9 @@ use crate::{
 };
 use std::fmt::Debug;
 
-pub mod siac;
 pub mod si10;
 pub mod si8;
+pub mod siac;
 
 pub mod si11 {
     pub type Card11Def = super::si10::Card10Def;
@@ -27,6 +27,15 @@ pub enum BlockNeededResult {
 }
 
 pub trait CardDefinition: Debug {
+    const HAS_CARD_EXCLUSIVES: bool = false;
+    type CardExclusivesType;
+    fn get_exclusives(&self) -> Option<Self::CardExclusivesType> {
+        return None;
+    }
+    fn has_exclusives(&self) -> bool {
+        return Self::HAS_CARD_EXCLUSIVES;
+    }
+
     fn new_empty() -> Self;
     fn get_siid(&self) -> Option<u32>;
     fn get_punch_count(&self) -> Option<u8>;

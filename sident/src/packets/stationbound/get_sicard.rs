@@ -30,7 +30,6 @@ impl StationboundPacket for GetSICard6 {
     }
 }
 
-
 #[derive(Debug)]
 pub struct GetSICard5;
 

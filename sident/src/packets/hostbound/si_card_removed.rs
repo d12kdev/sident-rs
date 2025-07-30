@@ -23,11 +23,10 @@ impl HostboundPacket for SICardRemoved {
     }
 }
 
-
 #[derive(Debug)]
 pub struct SICard6Removed {
     pub station_code: u16,
-    pub siid: u32
+    pub siid: u32,
 }
 
 impl Packet for SICard6Removed {
@@ -44,20 +43,14 @@ impl HostboundPacket for SICard6Removed {
         let station_code = u16::from_be_bytes([data[0], data[1]]);
         let siid = u32::from_be_bytes([0, data[3], data[4], data[5]]);
 
-        Ok(
-            Self {
-                station_code,
-                siid
-            }
-        )
+        Ok(Self { station_code, siid })
     }
 }
-
 
 #[derive(Debug)]
 pub struct SICard5Removed {
     pub station_code: u16,
-    pub sii: u32
+    pub sii: u32,
 }
 
 impl Packet for SICard5Removed {
@@ -74,11 +67,6 @@ impl HostboundPacket for SICard5Removed {
         let station_code = u16::from_be_bytes([data[0], data[1]]);
         let sii = u32::from_be_bytes([0, data[3], data[4], data[5]]);
 
-        Ok(
-            Self {
-                station_code,
-                sii
-            }
-        )
+        Ok(Self { station_code, sii })
     }
 }

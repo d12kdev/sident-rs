@@ -19,7 +19,7 @@ use crate::{
     0x08..0x0A  Production date
     0x0B..0x0C  Station model
     0x0D        Memory KBs
-    
+
 */
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
