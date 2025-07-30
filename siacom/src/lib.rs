@@ -353,19 +353,16 @@ impl SIAndroidCom {
         guard.set_baud_rate(baud).await
     }
 
+    // i vibecoded this because idk what i was doing
+    // the commit that added this comment will be just about removing the annoying comments the model generated
     fn poll_read_internal(
-        mut self: Pin<&mut Self>, // Add `mut` here
+        mut self: Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
         buf: &mut tokio::io::ReadBuf<'_>,
     ) -> Poll<io::Result<()>> {
-        // A loop is the standard pattern for poll functions. If we make progress,
-        // we `continue` to immediately try and make more progress.
         loop {
-            // We use `self.as_mut().project()` to create a *reborrow*.
-            // This allows us to use `self` again in the next loop iteration.
             let mut this = self.as_mut().project();
 
-            // --- STATE 1: We have data in our internal buffer ---
             if *this.read_pos < this.read_buf.len() {
                 let available = &this.read_buf[*this.read_pos..];
                 let to_copy = available.len().min(buf.remaining());
@@ -377,17 +374,13 @@ impl SIAndroidCom {
                     *this.read_pos = 0;
                 }
 
-                // We've successfully written data, so we are Ready.
                 return Poll::Ready(Ok(()));
             }
 
-            // --- STATE 2: Our buffer is empty, we need to poll the read future ---
-            // Ensure the future exists.
             if this.read_fut.is_none() {
                 let inner = Arc::clone(this.inner);
                 let fut = async move {
                     let mut guard = inner.lock().await;
-                    // Using a fixed-size buffer for the underlying read.
                     let mut temp_buf = vec![0u8; 64];
                     let l = guard.bulkrd(&mut temp_buf).await?;
                     temp_buf.truncate(l);
@@ -396,25 +389,18 @@ impl SIAndroidCom {
                 this.read_fut.set(Some(Box::pin(fut)));
             }
 
-            // Poll the future.
             if let Some(fut) = this.read_fut.as_mut().as_pin_mut() {
                 match fut.poll(cx) {
                     Poll::Ready(Ok(data)) => {
-                        // The future completed! We have new data.
                         this.read_fut.set(None);
                         *this.read_buf = data.0;
                         *this.read_pos = 0;
-
-                        // Instead of a recursive call, we just continue the loop.
-                        // The next iteration will hit STATE 1 and handle the new data.
                         continue;
                     },
                     Poll::Ready(Err(e)) => {
-                        // The future returned an error.
                         this.read_fut.set(None);
                         return Poll::Ready(Err(e));
                     },
-                    // The future is not ready, so we can't make progress.
                     Poll::Pending => return Poll::Pending,
                 }
             }
@@ -477,6 +463,7 @@ impl AsyncWrite for SIAndroidCom {
 }
 
 
+// dont ever uncomment this please
 // impl AsyncRead for InnerSIAndroidCom {
 //     fn poll_read(
 //         self: std::pin::Pin<&mut Self>,
