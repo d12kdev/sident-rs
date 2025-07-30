@@ -1,11 +1,11 @@
 use crate::{
-    DataAddressAndLength,
+    SystemValueDataAddressAndLength,
     packet::{Packet, StationboundPacket},
 };
 
 #[derive(Debug)]
 pub struct GetSystemValue {
-    pub addr_len: DataAddressAndLength,
+    pub addr_len: SystemValueDataAddressAndLength,
 }
 
 impl Packet for GetSystemValue {

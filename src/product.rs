@@ -1,5 +1,8 @@
 /// The type of the station
 /// Source: SPORTident.Communication.ProductType
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts-rs", ts(export))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, num_enum::TryFromPrimitive, Default)]
 #[repr(u16)]
 pub enum ProductModel {

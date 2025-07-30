@@ -1,4 +1,5 @@
 use std::{
+    collections::HashMap,
     io::Cursor,
     time::{Duration, Instant},
 };
@@ -25,29 +26,85 @@ pub mod consts {
 pub struct SICodec;
 
 impl SICodec {
-    pub fn serialize_packet<P: StationboundPacket>(&self, packet: &P) -> Vec<u8> {
+    pub fn replace_printer_charset_bytes(data: &[u8]) -> Vec<u8> {
+        let map = HashMap::from([
+            (0x80, 0xC7),
+            (0x81, 0xFC),
+            (0x82, 0xE9),
+            (0x83, 0xE2),
+            (0x84, 0xE4),
+            (0x85, 0xE0),
+            (0x86, 0xE5),
+            (0x87, 0xE7),
+            (0x88, 0xEA),
+            (0x89, 0xEB),
+            (0x8A, 0xE8),
+            (0x8B, 0xEF),
+            (0x8C, 0xEE),
+            (0x8D, 0xEC),
+            (0x8E, 0xC4),
+            (0x8F, 0xC5),
+            (0x90, 0xC9),
+            (0x91, 0xE6),
+            (0x92, 0xC6),
+            (0x93, 0xF4),
+            (0x94, 0xF6),
+            (0x95, 0xF2),
+            (0x96, 0xFB),
+            (0x97, 0xF9),
+            (0x98, 0xFF),
+            (0x99, 0xD6),
+            (0x9A, 0xDC),
+            (0xA0, 0xE1),
+            (0xA1, 0xED),
+            (0xA2, 0xF3),
+            (0xA3, 0xFA),
+            (0xA4, 0xF1),
+            (0xA5, 0xD1),
+            (0xE1, 0xDF),
+        ]);
+
+        data.iter().map(|b| *map.get(b).unwrap_or(b)).collect()
+    }
+
+    pub fn encode_iso_8859_1(s: &str) -> Option<Vec<u8>> {
+        // TODO: result may be better
+        s.chars()
+            .map(|c| {
+                let code = c as u32;
+                if code <= 0xFF { Some(code as u8) } else { None }
+            })
+            .collect()
+    }
+
+    pub fn decode_iso_8859_1(data: &[u8]) -> Result<String, std::string::FromUtf8Error> {
+        let mut out = vec![0u8; data.len() * 2];
+        let written = encoding_rs::mem::convert_latin1_to_utf8(&data, &mut out);
+        out.truncate(written);
+        return String::from_utf8(out);
+    }
+
+    pub fn serialize_packet<P: StationboundPacket>(packet: &P) -> Vec<u8> {
         let mut buffer: Vec<u8> = Vec::new();
         buffer.extend_from_slice(&packet.serialize());
         buffer
     }
 
     pub async fn deserialize_raw_packet(
-        &self,
-        data: Vec<u8>,
+        data: &Vec<u8>,
     ) -> Result<RawPacket, DeserializeRawPacketError> {
         let cursor = Cursor::new(data);
-        self.deserialize_raw_packet_reader(cursor, None).await
+        Self::deserialize_raw_packet_reader(cursor, None).await
     }
 
     pub async fn deserialize_raw_packet_reader<R>(
-        &self,
         mut reader: R,
         timeout: Option<Duration>,
     ) -> Result<RawPacket, DeserializeRawPacketError>
     where
         R: AsyncRead + Unpin,
     {
-        let timeout = timeout.unwrap_or(Duration::from_secs(10));
+        let timeout = timeout.unwrap_or(Duration::from_millis(1000));
         let mut final_buffer: Vec<u8> = Vec::new();
         let mut buf = [0u8; 1];
         let start_time = Instant::now();
@@ -80,8 +137,8 @@ impl SICodec {
                 return Err(DeserializeRawPacketError::TimedOut);
             }
 
-            match reader.read_exact(&mut buf).await {
-                Ok(1) => {
+            match tokio::time::timeout(timeout, reader.read_exact(&mut buf)).await {
+                Ok(Ok(1)) => {
                     let byte = buf[0];
                     final_buffer.push(byte);
 
@@ -140,6 +197,7 @@ impl SICodec {
                                 crc = u16::from_be_bytes(crc_bytes);
                                 state = ParseState::WaitingForEtx;
                             } else {
+                                log::error!("Failed to deserialize CRC");
                                 return Err(DeserializeRawPacketError::ParseError);
                             }
                         }
@@ -148,6 +206,7 @@ impl SICodec {
                                 if byte == ETX {
                                     break;
                                 } else {
+                                    log::error!("Failed to wait for ETX");
                                     return Err(DeserializeRawPacketError::ParseError);
                                 }
                             } else {
@@ -155,9 +214,10 @@ impl SICodec {
                             }
                         }
                     }
-                },
-                Ok(_) => return Err(DeserializeRawPacketError::ParseError),
-                Err(e) => return Err(DeserializeRawPacketError::IoError(e)),
+                }
+                Ok(Ok(_)) => return Err(DeserializeRawPacketError::ParseError),
+                Ok(Err(e)) => return Err(DeserializeRawPacketError::IoError(e)),
+                Err(_) => return Err(DeserializeRawPacketError::TimedOut)
             }
         }
 

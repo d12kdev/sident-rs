@@ -6,3 +6,5 @@ mod si_card_detected;
 pub use si_card_detected::*;
 mod get_sicard_res;
 pub use get_sicard_res::*;
+mod si_card_removed;
+pub use si_card_removed::*;

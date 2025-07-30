@@ -1,9 +1,7 @@
 use crate::define_data_address_and_length;
 
-
-
 define_data_address_and_length! {
-    DataAddressAndLength {
+    SystemValueDataAddressAndLength {
         ProtocolConfig => (0x74, 0x01),
         SerialNumber   => (0x00, 0x04),
         FirmwareVersion => (0x05, 0x03),

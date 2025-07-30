@@ -1,4 +1,4 @@
-#[derive(Debug, Clone, Copy, num_enum::TryFromPrimitive)]
+#[derive(Debug, Clone, Copy, num_enum::TryFromPrimitive, PartialEq, Eq)]
 #[repr(u8)]
 /// Master/Slave (Direct/Remote) mode
 pub enum MsMode {
