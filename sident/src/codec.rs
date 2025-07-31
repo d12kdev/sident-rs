@@ -130,7 +130,7 @@ impl SICodec {
 
         let mut final_buffer: Vec<u8> = Vec::new();
         let mut buf = [0u8; 1];
-        let start_time = Instant::now();
+        let mut byte_time = Instant::now();
 
         #[derive(PartialEq, Eq)]
         enum ParseState {
@@ -158,13 +158,15 @@ impl SICodec {
 
         loop {
             if let SICodecTimeout::Finite(timeout) = timeout {
-                if state != ParseState::WaitingForStart && start_time.elapsed() >= timeout {
+                if state != ParseState::WaitingForStart && byte_time.elapsed() >= timeout {
+                    log::error!("timeout");
                     return Err(DeserializeRawPacketError::TimedOut);
                 }
             }
 
             if let SICodecTimeout::Finite(timeout) = stx_timeout {
-                if state == ParseState::WaitingForStart && start_time.elapsed() >= timeout {
+                if state == ParseState::WaitingForStart && byte_time.elapsed() >= timeout {
+                    log::error!("stxtimeout");
                     return Err(DeserializeRawPacketError::TimedOut);
                 }
             }
@@ -175,6 +177,7 @@ impl SICodec {
                 Ok(1) => {
                     let byte = buf[0];
                     final_buffer.push(byte);
+                    byte_time = Instant::now();
 
                     match &mut state {
                         ParseState::WaitingForStart => {

@@ -152,6 +152,8 @@ struct Block3 {
     new_battery_date: NaiveDate,
     hw_version: u16,
     sw_version: u16,
+    mvbat: u8,
+    rbat: u8,
     clear_count: u16,
     start_reserve: Option<Punch>,
     finish_reserve: Option<Punch>,
@@ -176,6 +178,10 @@ impl Block3 {
         let sw_version_bytes = extract_fixed!(&data, 0x42..0x43);
         let sw_version = u16::from_be_bytes(sw_version_bytes);
 
+        let mvbat = data[0x47];
+
+        let rbat = data[0x45];
+
         let clear_count_bytes = extract_fixed!(&data, 0x48..0x49);
         let clear_count = u16::from_be_bytes(clear_count_bytes);
 
@@ -190,6 +196,8 @@ impl Block3 {
             new_battery_date,
             hw_version,
             sw_version,
+            mvbat,
+            rbat,
             clear_count,
             start_reserve,
             finish_reserve,
@@ -267,6 +275,8 @@ pub struct ActiveCardDefExclusivesB3 {
     pub new_battery_date: NaiveDate,
     pub hw_version: u16,
     pub sw_version: u16,
+    pub battery_voltage: f64,
+    pub battery_low_threshold: f64,
     pub clear_count: u16,
     pub start_reserve: Option<Punch>,
     pub finish_reserve: Option<Punch>,
@@ -287,11 +297,32 @@ impl CardDefinition for ActiveCardDef {
         }
 
         if let Some(block3) = &self.block3.as_ref() {
+            fn round_to(val: f64, decs: u32) -> f64 {
+                let factor = 10f64.powi(decs as i32);
+                return (val * factor).round() / factor;
+            }
+
+            fn calc_voltage(b: u8) -> f64 {
+                if b == 0 {
+                    return 1.9;
+                } else if b < 0x10 {
+                    return round_to(1.9 + 0.09 * (b as f64), 2);
+                } else {
+                    log::warn!("Invalid voltage byte!");
+                    return -1.0;
+                }
+            }
+
+            let battery_voltage = calc_voltage(block3.mvbat);
+            let battery_low_threshold = calc_voltage(block3.rbat);
+
             result.1 = Some(ActiveCardDefExclusivesB3 {
                 clear_check_reserve: block3.clear_check_reserve,
                 new_battery_date: block3.new_battery_date,
                 hw_version: block3.hw_version,
                 sw_version: block3.sw_version,
+                battery_voltage,
+                battery_low_threshold,
                 clear_count: block3.clear_count,
                 start_reserve: block3.start_reserve,
                 finish_reserve: block3.finish_reserve,

@@ -365,6 +365,9 @@ mod impl_shared {
                     }
                     ReadoutPreference::Punches => {
                         satisfy(&mut carddef, BlockNeededIntention::Punches, self).await?
+                    },
+                    ReadoutPreference::CardExclusives => {
+                        satisfy(&mut carddef, BlockNeededIntention::CardExclusives, self).await?
                     }
                 }
             }
@@ -379,11 +382,12 @@ mod impl_shared {
     pub enum ReadoutPreference {
         CardPersonalData,
         Punches,
+        CardExclusives
     }
 
     impl ReadoutPreference {
-        pub fn all() -> [Self; 2] {
-            return [ReadoutPreference::CardPersonalData, ReadoutPreference::Punches];
+        pub fn all() -> [Self; 3] {
+            return [ReadoutPreference::CardPersonalData, ReadoutPreference::Punches, ReadoutPreference::CardExclusives];
         }
     }
 
@@ -446,7 +450,7 @@ mod impl_shared {
                     Some(maybe) => maybe,
                     None => None,
                 };
-                let finish = match def.get_start() {
+                let finish = match def.get_finish() {
                     Some(maybe) => maybe,
                     None => None,
                 };

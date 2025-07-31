@@ -1,4 +1,4 @@
-# SPORTIdent Android Communication Library
+# SPORTident Android Communication Library
 
 ⚠️ **THIS CRATE COMPILES ONLY FOR ANDROID TARGETS** ⚠️  
 *That means you should add `siacom` as a dependency **only** when compiling for Android (`target.'cfg(target_os = "android")'.dependencies`).*
