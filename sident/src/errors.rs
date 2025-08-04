@@ -5,6 +5,36 @@ use thiserror::Error;
 
 use crate::{card::CardType, product::ProductModel};
 
+macro_rules! _sident_err_gen {
+    ({ $( $variant:ident => ($source:ty, $msg:literal) ),* $(,)? }) => {
+        #[derive(Debug, thiserror::Error)]
+        pub enum SidentError {
+            $(
+                #[error($msg)]
+                $variant(#[from] $source),
+            )*
+        }
+    };
+}
+
+_sident_err_gen!({
+    NewConnectionError => (NewConnectionError, "new connection error: {0}"),
+    DeserializePacketError => (DeserializePacketError, "deserialize packet error: {0}"),
+    ReceivePacketError => (ReceivePacketError, "receive packet error: {0}"),
+    ReceiveRawPacketError => (ReceiveRawPacketError, "receive raw packet error: {0}"),
+    DeserializeRawPacketError => (DeserializeRawPacketError, "deserialize raw packet error: {0}"),
+    FirmwareVersionCodecError => (FirmwareVersionCodecError, "firmware version codec error: {0}"),
+    MakeSystemConfigError => (MakeSystemConfigError, "make sysconfig error: {0}"),
+    ReadoutError => (ReadoutError, "readout error: {0}"),
+    DeserializePunchError => (DeserializePunchError, "deserialize punch error: {0}"),
+    DeserializeCardPersonalDataError => (DeserializeCardPersonalDataError, "deserialize card personal data error: {0}"),
+    FeedBlockError => (FeedBlockError, "feed block error: {0}"),
+    DeserializeBlockError => (DeserializeBlockError, "deserialize block error: {0}"),
+    ConnectionOperationError => (ConnectionOperationError, "connection op error: {0}"),
+    ReadoutResultTransformationError => (ReadoutResultTransformationError, "readout result transf error: {0}"),
+    SimpleActionError => (SimpleActionError, "simple action error: {0}")
+});
+
 #[derive(Debug, Error)]
 pub enum NewConnectionError {
     #[cfg(not(target_os = "android"))]

@@ -7,10 +7,12 @@ use std::fmt::Debug;
 
 pub mod si10;
 pub mod si8;
+pub mod si9;
 pub mod siac;
 
 pub mod si11 {
-    pub type Card11Def = super::si10::Card10Def;
+    /// Card11 is a passive card with active feedback. Thanks to the feedback Card11 has battery and shares the structure with SIAC
+    pub type Card11Def = super::siac::ActiveCardDef;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

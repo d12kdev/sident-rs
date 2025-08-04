@@ -51,3 +51,24 @@ pub fn crc16(data: &[u8]) -> u16 {
 
     tmp & 0xFFFF
 }
+
+pub fn crc8(data: &[u8]) -> u8 {
+    const POLY: u8 = 0x39;
+
+    let mut crc = 0u8;
+
+    for &byte in data {
+        crc ^= byte;
+        for _ in 0..8 {
+            if crc & 0x80 != 0 {
+                crc = (crc << 1) ^ POLY;
+            } else {
+                crc <<= 1;
+            }
+
+            crc &= 0xFF;
+        }
+    }
+
+    crc
+}

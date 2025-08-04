@@ -1,5 +1,5 @@
 /*
-    SPORTident Card-10/11 Memory Structure - Very similar to SIAC, but SI10/11 does not have battery
+    SPORTident Card-10 Memory Structure - Very similar to SIAC, but SI10/11 does not have battery
 
     Every integer is big endian encoded unless said differently in the desc.
 
@@ -35,15 +35,8 @@
     0x40..0x41  Hardware version
     0x42..0x43  Software version
     0x48..0x49  Usage/Clear count
-    0x4C..0x4F  SEL_FEEDBACK - similar to BRD_FEEDBACK
-    0x50..0x53  BRD_FEEDBACK - i believe has something to do with the SIAC feeedback (light, beep)
-    0x54..0x57  System values - RBAT LBAT PROT CRC8
     0x58..0x5B  Start reserve (punch)
     0x5C..0x5F  Finish reserve (punch)
-    0x60..0x63  SIID0_AC
-    0x64..0x67  SIID1_AC
-    0x68..0x6B  SIID2_AC
-    0x6C..0x6F  SIID3_AC don't worry i don't know what this is either
     0x70..0x73  SISYS?? idk but its always 0x73,0x69,0x61,0x63 and in HxD it says "siac"
     0x74..0x7B  Trim values?? what is this
     0x7C..0x7F  Device configuration - idk what each byte means tho
@@ -73,8 +66,6 @@ struct Block0 {
     finish: Option<Punch>,
     punch_count: u8,
     siid: u32,
-    production_date_month: u8,
-    production_date_year: u16,
     #[cfg_attr(feature = "serde", serde(with = "serde_big_array::BigArray"))]
     #[cfg_attr(feature = "ts-rs", ts(type = "[number; 96]"))]
     card_personal_data1: [u8; 96],
@@ -101,9 +92,6 @@ impl Block0 {
         siid_bytes[0] = 0x00;
         let siid = u32::from_be_bytes(siid_bytes);
 
-        let production_date_month = data[0x1C];
-        let production_date_year = (data[0x1D] as u16) + 2000;
-
         let card_personal_data1 = extract_fixed!(&data, 0x20..0x7F);
 
         let personal_data_finished = [data[126], data[127]] == [0xEE, 0xEE];
@@ -115,8 +103,6 @@ impl Block0 {
             finish,
             punch_count,
             siid,
-            production_date_month,
-            production_date_year,
             card_personal_data1,
             personal_data_finished,
         });
@@ -151,8 +137,8 @@ struct Block3 {
     hw_version: u16,
     sw_version: u16,
     clear_count: u16,
-    start_reserve: Punch,
-    finish_reserve: Punch,
+    start_reserve: Option<Punch>,
+    finish_reserve: Option<Punch>,
 }
 
 impl Block3 {
@@ -178,10 +164,10 @@ impl Block3 {
         let clear_count = u16::from_be_bytes(clear_count_bytes);
 
         let start_reserve_bytes = extract_fixed!(&data, 0x58..0x5B);
-        let start_reserve = Punch::deserialize(&start_reserve_bytes)?;
+        let start_reserve = Punch::deserialize_control_punch(&start_reserve_bytes)?;
 
         let finish_reserve_bytes = extract_fixed!(&data, 0x5C..0x5F);
-        let finish_reserve = Punch::deserialize(&finish_reserve_bytes)?;
+        let finish_reserve = Punch::deserialize_control_punch(&finish_reserve_bytes)?;
 
         return Ok(Self {
             clear_check_reserve,
@@ -250,83 +236,35 @@ pub struct Card10Def {
 #[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[cfg_attr(feature = "ts-rs", ts(export))]
 #[derive(Debug)]
-pub struct Card10DefExclusivesB0 {
+pub struct Card10Exclusives {
     pub uid: u32,
-    pub production_date_month: u8,
-    pub production_date_year: u16,
-}
-
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
-#[cfg_attr(feature = "ts-rs", ts(export))]
-#[derive(Debug)]
-pub struct Card10DefExclusivesB3 {
     pub clear_check_reserve: Punch,
     pub prod_date: NaiveDate,
     pub hw_version: u16,
     pub sw_version: u16,
     pub clear_count: u16,
-    pub start_reserve: Punch,
-    pub finish_reserve: Punch,
-}
-
-impl Card10Def {
-    pub fn get_exclusives(&self) -> (Option<Card10DefExclusivesB0>, Option<Card10DefExclusivesB3>) {
-        let mut result = (None, None);
-
-        if let Some(block0) = &self.block0.as_ref() {
-            result.0 = Some(Card10DefExclusivesB0 {
-                uid: block0.uid,
-                production_date_month: block0.production_date_month,
-                production_date_year: block0.production_date_year,
-            })
-        }
-
-        if let Some(block3) = &self.block3.as_ref() {
-            result.1 = Some(Card10DefExclusivesB3 {
-                clear_check_reserve: block3.clear_check_reserve,
-                prod_date: block3.prod_date,
-                hw_version: block3.hw_version,
-                sw_version: block3.sw_version,
-                clear_count: block3.clear_count,
-                start_reserve: block3.start_reserve,
-                finish_reserve: block3.finish_reserve,
-            })
-        }
-
-        return result;
-    }
+    pub start_reserve: Option<Punch>,
+    pub finish_reserve: Option<Punch>,
 }
 
 impl CardDefinition for Card10Def {
     const HAS_CARD_EXCLUSIVES: bool = true;
-    type CardExclusivesType = (Option<Card10DefExclusivesB0>, Option<Card10DefExclusivesB3>);
+    type CardExclusivesType = Card10Exclusives;
     fn get_exclusives(&self) -> Option<Self::CardExclusivesType> {
-        let mut result = (None, None);
+        let block0 = self.block0.as_ref()?;
+        let block3 = self.block3.as_ref()?;
 
-        if let Some(block0) = &self.block0.as_ref() {
-            result.0 = Some(Card10DefExclusivesB0 {
-                uid: block0.uid,
-                production_date_month: block0.production_date_month,
-                production_date_year: block0.production_date_year,
-            })
-        }
-
-        if let Some(block3) = &self.block3.as_ref() {
-            result.1 = Some(Card10DefExclusivesB3 {
-                clear_check_reserve: block3.clear_check_reserve,
-                hw_version: block3.hw_version,
-                sw_version: block3.sw_version,
-                clear_count: block3.clear_count,
-                start_reserve: block3.start_reserve,
-                finish_reserve: block3.finish_reserve,
-                prod_date: block3.prod_date
-            })
-        }
-
-        return Some(result);
+        return Some(Self::CardExclusivesType {
+            uid: block0.uid,
+            clear_check_reserve: block3.clear_check_reserve,
+            prod_date: block3.prod_date,
+            hw_version: block3.hw_version,
+            sw_version: block3.sw_version,
+            clear_count: block3.clear_count,
+            start_reserve: block3.start_reserve,
+            finish_reserve: block3.finish_reserve,
+        });
     }
-
 
     fn new_empty() -> Self {
         Self {

@@ -33,13 +33,15 @@ pub fn is_extended_packet_id(id: u8) -> bool {
     true
 }
 
-pub const SUPPORTED_CARDS: [CardType; 4] = [
+pub const SUPPORTED_CARDS: [CardType; 5] = [
     CardType::ActiveCard,
-    CardType::Card10,
     CardType::Card11,
+    CardType::Card10,
+    CardType::Card9,
     CardType::Card8,
 ];
 
+/// Default timeout
 pub fn td() -> SICodecTimeout {
     return *connection::TIMEOUT_DEFAULT;
 }

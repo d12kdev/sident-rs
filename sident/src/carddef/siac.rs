@@ -1,5 +1,5 @@
 /*
-    SPORTident ActiveCard Memory Structure
+    SPORTident ActiveCard/Card-11 Memory Structure
 
     Every integer is big endian encoded unless said differently in the desc.
 
@@ -37,8 +37,8 @@
     0x44..0x45  Counter signals??
     0X47        MVBAT - idk
     0x48..0x49  Usage/Clear count
-    0x4C..0x4F  SEL_FEEDBACK - similar to BRD_FEEDBACK
-    0x50..0x53  BRD_FEEDBACK - i believe has something to do with the SIAC feeedback (light, beep)
+    0x4C..0x4F  SEL_FEEDBACK - See SiacFeedback enum
+    0x50..0x53  BRD_FEEDBACK - idk what this does
     0x54..0x57  System values - RBAT LBAT PROT CRC8
     0x58..0x5B  Start reserve (punch)
     0x5C..0x5F  Finish reserve (punch)
@@ -75,8 +75,6 @@ struct Block0 {
     finish: Option<Punch>,
     punch_count: u8,
     siid: u32,
-    production_date_month: u8,
-    production_date_year: u16,
     #[cfg_attr(feature = "serde", serde(with = "serde_big_array::BigArray"))]
     #[cfg_attr(feature = "ts-rs", ts(type = "[number; 96]"))]
     card_personal_data1: [u8; 96],
@@ -103,9 +101,6 @@ impl Block0 {
         siid_bytes[0] = 0x00;
         let siid = u32::from_be_bytes(siid_bytes);
 
-        let production_date_month = data[0x1C];
-        let production_date_year = (data[0x1D] as u16) + 2000;
-
         let card_personal_data1 = extract_fixed!(&data, 0x20..0x7F);
 
         let personal_data_finished = [data[126], data[127]] == [0xEE, 0xEE];
@@ -117,8 +112,6 @@ impl Block0 {
             finish,
             punch_count,
             siid,
-            production_date_month,
-            production_date_year,
             card_personal_data1,
             personal_data_finished,
         });
@@ -152,9 +145,10 @@ struct Block3 {
     new_battery_date: NaiveDate,
     hw_version: u16,
     sw_version: u16,
-    mvbat: u8,
-    rbat: u8,
     clear_count: u16,
+    mvbat: u8,
+    sel_feedback: [u8; 4],
+    rbat: u8,
     start_reserve: Option<Punch>,
     finish_reserve: Option<Punch>,
 }
@@ -180,7 +174,9 @@ impl Block3 {
 
         let mvbat = data[0x47];
 
-        let rbat = data[0x45];
+        let sel_feedback = extract_fixed!(&data, 0x4C..0x4F);
+
+        let rbat = data[0x54];
 
         let clear_count_bytes = extract_fixed!(&data, 0x48..0x49);
         let clear_count = u16::from_be_bytes(clear_count_bytes);
@@ -196,9 +192,10 @@ impl Block3 {
             new_battery_date,
             hw_version,
             sw_version,
-            mvbat,
-            rbat,
             clear_count,
+            mvbat,
+            sel_feedback,
+            rbat,
             start_reserve,
             finish_reserve,
         });
@@ -260,78 +257,91 @@ pub struct ActiveCardDef {
 #[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[cfg_attr(feature = "ts-rs", ts(export))]
 #[derive(Debug)]
-pub struct ActiveCardDefExclusivesB0 {
-    pub uid: u32,
-    pub production_date_month: u8,
-    pub production_date_year: u16,
+pub enum SiacFeedback {
+    Short,
+    Long,
+    Default,
+    Other([u8; 4]),
+}
+impl SiacFeedback {
+    const SIAC_FB_SHORT: [u8; 4] = [0x06, 0x00, 0x05, 0x4A];
+    const SIAC_FB_LONG: [u8; 4] = [0x30, 0x00, 0x05, 0x4A];
+    const SIAC_FB_DEFAULT: [u8; 4] = [0x18, 0x00, 0x05, 0x4A];
+
+    pub fn to_bytes(&self) -> [u8; 4] {
+        match self {
+            Self::Short => Self::SIAC_FB_SHORT,
+            Self::Long => Self::SIAC_FB_LONG,
+            Self::Default => Self::SIAC_FB_DEFAULT,
+            Self::Other(b) => *b,
+        }
+    }
+
+    pub fn from_bytes(inp: [u8; 4]) -> Self {
+        match inp {
+            Self::SIAC_FB_SHORT => Self::Short,
+            Self::SIAC_FB_LONG => Self::Long,
+            Self::SIAC_FB_DEFAULT => Self::Default,
+            inp => Self::Other(inp),
+        }
+    }
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[cfg_attr(feature = "ts-rs", ts(export))]
 #[derive(Debug)]
-pub struct ActiveCardDefExclusivesB3 {
+pub struct ActiveCardExclusives {
+    pub uid: u32,
     pub clear_check_reserve: Punch,
     pub new_battery_date: NaiveDate,
     pub hw_version: u16,
     pub sw_version: u16,
-    pub battery_voltage: f64,
-    pub battery_low_threshold: f64,
     pub clear_count: u16,
+    pub battery_voltage: f64,
+    pub siac_feedback: SiacFeedback,
+    pub battery_low_threshold: f64,
     pub start_reserve: Option<Punch>,
     pub finish_reserve: Option<Punch>,
 }
 
 impl CardDefinition for ActiveCardDef {
     const HAS_CARD_EXCLUSIVES: bool = true;
-    type CardExclusivesType = (Option<ActiveCardDefExclusivesB0>, Option<ActiveCardDefExclusivesB3>);
+    type CardExclusivesType = ActiveCardExclusives;
     fn get_exclusives(&self) -> Option<Self::CardExclusivesType> {
-        let mut result = (None, None);
-
-        if let Some(block0) = &self.block0.as_ref() {
-            result.0 = Some(ActiveCardDefExclusivesB0 {
-                uid: block0.uid,
-                production_date_month: block0.production_date_month,
-                production_date_year: block0.production_date_year,
-            })
+        fn round_to(val: f64, decs: u32) -> f64 {
+            let factor = 10f64.powi(decs as i32);
+            return (val * factor).round() / factor;
         }
 
-        if let Some(block3) = &self.block3.as_ref() {
-            fn round_to(val: f64, decs: u32) -> f64 {
-                let factor = 10f64.powi(decs as i32);
-                return (val * factor).round() / factor;
+        fn calc_voltage(b: u8) -> f64 {
+            if b == 0 {
+                return 1.9;
+            } else if b < 0x10 {
+                return round_to(1.9 + 0.09 * (b as f64), 2);
+            } else {
+                log::warn!("ActiveCardDef: Invalid voltage byte! (0x{:02X?})", b);
+                return -1.0;
             }
-
-            fn calc_voltage(b: u8) -> f64 {
-                if b == 0 {
-                    return 1.9;
-                } else if b < 0x10 {
-                    return round_to(1.9 + 0.09 * (b as f64), 2);
-                } else {
-                    log::warn!("Invalid voltage byte!");
-                    return -1.0;
-                }
-            }
-
-            let battery_voltage = calc_voltage(block3.mvbat);
-            let battery_low_threshold = calc_voltage(block3.rbat);
-
-            result.1 = Some(ActiveCardDefExclusivesB3 {
-                clear_check_reserve: block3.clear_check_reserve,
-                new_battery_date: block3.new_battery_date,
-                hw_version: block3.hw_version,
-                sw_version: block3.sw_version,
-                battery_voltage,
-                battery_low_threshold,
-                clear_count: block3.clear_count,
-                start_reserve: block3.start_reserve,
-                finish_reserve: block3.finish_reserve,
-            })
         }
 
-        return Some(result);
+        let block0 = self.block0.as_ref()?;
+        let block3 = self.block3.as_ref()?;
+
+        return Some(Self::CardExclusivesType {
+            uid: block0.uid,
+            clear_check_reserve: block3.clear_check_reserve,
+            new_battery_date: block3.new_battery_date,
+            hw_version: block3.hw_version,
+            sw_version: block3.sw_version,
+            clear_count: block3.clear_count,
+            battery_voltage: calc_voltage(block3.mvbat),
+            siac_feedback: SiacFeedback::from_bytes(block3.sel_feedback),
+            battery_low_threshold: calc_voltage(block3.rbat),
+            start_reserve: block3.start_reserve,
+            finish_reserve: block3.finish_reserve,
+        });
     }
-
 
     fn new_empty() -> Self {
         Self {

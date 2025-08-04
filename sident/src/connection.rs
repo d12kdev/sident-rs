@@ -2,7 +2,7 @@ use std::time::Duration;
 
 pub use impl_shared::*;
 
-use crate::{codec::SICodecTimeout, MsMode, SystemConfig};
+use crate::{MsMode, SystemConfig, codec::SICodecTimeout};
 
 #[cfg(target_os = "android")]
 type ConnectionStream = siacom::SIAndroidCom;
@@ -13,7 +13,7 @@ type ConnectionStream = tokio_serial::SerialStream;
 pub struct Connection {
     stream: ConnectionStream,
     ms_mode: MsMode,
-    station_sys_config: SystemConfig
+    station_sys_config: SystemConfig,
 }
 
 #[cfg(not(target_os = "android"))]
@@ -183,11 +183,8 @@ mod impl_android {
     }
 }
 
-
-pub static TIMEOUT_DEFAULT: once_cell::sync::Lazy<SICodecTimeout> = once_cell::sync::Lazy::new(|| {
-    SICodecTimeout::Finite(Duration::from_millis(1000))
-});
-
+pub static TIMEOUT_DEFAULT: once_cell::sync::Lazy<SICodecTimeout> =
+    once_cell::sync::Lazy::new(|| SICodecTimeout::Finite(Duration::from_millis(2500)));
 
 mod impl_shared {
 
@@ -196,15 +193,26 @@ mod impl_shared {
     use tokio::io::AsyncWriteExt;
 
     use crate::{
-        card::{CardPersonalData, CardType}, carddef::{
-            si10::Card10Def, si11::Card11Def, si8::Card8Def, siac::ActiveCardDef, BlockNeededIntention, BlockNeededResult, CardDefinition
-        }, codec::{SICodec, SICodecTimeout}, connection::TIMEOUT_DEFAULT, dedup_enum_array, errors::{
+        MsMode, SUPPORTED_CARDS,
+        card::{CardPersonalData, CardType},
+        carddef::{
+            BlockNeededIntention, BlockNeededResult, CardDefinition, si8::Card8Def, si9::Card9Def,
+            si10::Card10Def, si11::Card11Def, siac::ActiveCardDef,
+        },
+        codec::{SICodec, SICodecTimeout},
+        connection::TIMEOUT_DEFAULT,
+        dedup_enum_array,
+        errors::{
             ConnectionOperationError, ReadoutError, ReadoutResultTransformationError,
             ReceivePacketError, ReceiveRawPacketError, SimpleActionError,
-        }, generate_readout_fn, packet::{HostboundPacket, RawPacket, StationboundPacket}, packets::{
+        },
+        generate_readout_fn,
+        packet::{HostboundPacket, RawPacket, StationboundPacket},
+        packets::{
             hostbound::{GetSICardNewerResponse, SetMsModeResponse},
             stationbound::{BeepIfStationReady, GetSICardNewer, SetMsMode},
-        }, punch::Punch, MsMode, SUPPORTED_CARDS
+        },
+        punch::Punch,
     };
 
     use super::Connection;
@@ -247,22 +255,32 @@ mod impl_shared {
             return Ok(());
         }
 
-        pub async fn receive_raw_packet_custom(&mut self, stx_timeout: SICodecTimeout, timeout: SICodecTimeout) -> Result<RawPacket, ReceiveRawPacketError> {
-            let rp = SICodec::deserialize_raw_packet_reader(
-                &mut self.stream,
-                stx_timeout,
-                timeout
-            ).await?;
+        pub async fn receive_raw_packet_custom(
+            &mut self,
+            stx_timeout: SICodecTimeout,
+            timeout: SICodecTimeout,
+        ) -> Result<RawPacket, ReceiveRawPacketError> {
+            let rp = SICodec::deserialize_raw_packet_reader(&mut self.stream, stx_timeout, timeout)
+                .await?;
             info!("RAW: STATION -> HOST: {:?}", rp);
             return Ok(rp);
         }
 
         pub async fn receive_raw_packet(&mut self) -> Result<RawPacket, ReceiveRawPacketError> {
-            return self.receive_raw_packet_custom(*TIMEOUT_DEFAULT, *TIMEOUT_DEFAULT).await;
+            return self
+                .receive_raw_packet_custom(*TIMEOUT_DEFAULT, *TIMEOUT_DEFAULT)
+                .await;
         }
 
-        pub async fn receive_packet_custom<P: HostboundPacket>(&mut self, stx_timeout: SICodecTimeout, timeout: SICodecTimeout)  -> Result<P, ReceivePacketError> {
-            let p = self.receive_raw_packet_custom(stx_timeout, timeout).await?.deserialize_packet::<P>()?;
+        pub async fn receive_packet_custom<P: HostboundPacket>(
+            &mut self,
+            stx_timeout: SICodecTimeout,
+            timeout: SICodecTimeout,
+        ) -> Result<P, ReceivePacketError> {
+            let p = self
+                .receive_raw_packet_custom(stx_timeout, timeout)
+                .await?
+                .deserialize_packet::<P>()?;
             info!("STATION -> HOST: {:?}", p);
             return Ok(p);
         }
@@ -270,22 +288,31 @@ mod impl_shared {
         pub async fn receive_packet<P: HostboundPacket>(
             &mut self,
         ) -> Result<P, ReceivePacketError> {
-            return self.receive_packet_custom(*TIMEOUT_DEFAULT, *TIMEOUT_DEFAULT).await;
+            return self
+                .receive_packet_custom(*TIMEOUT_DEFAULT, *TIMEOUT_DEFAULT)
+                .await;
         }
 
-        pub async fn receive_and_ignore_packet_custom(&mut self, stx_timeout: SICodecTimeout, timeout: SICodecTimeout) -> Result<(), ReceiveRawPacketError> {
+        pub async fn receive_and_ignore_packet_custom(
+            &mut self,
+            stx_timeout: SICodecTimeout,
+            timeout: SICodecTimeout,
+        ) -> Result<(), ReceiveRawPacketError> {
             self.receive_raw_packet_custom(stx_timeout, timeout).await?;
             info!("PACKET IGNORED");
             return Ok(());
         }
 
         pub async fn receive_and_ignore_packet(&mut self) -> Result<(), ReceiveRawPacketError> {
-            return self.receive_and_ignore_packet_custom(*TIMEOUT_DEFAULT, *TIMEOUT_DEFAULT).await;
+            return self
+                .receive_and_ignore_packet_custom(*TIMEOUT_DEFAULT, *TIMEOUT_DEFAULT)
+                .await;
         }
 
         generate_readout_fn!(readout_activecard, ActiveCard, ActiveCardDef);
-        generate_readout_fn!(readout_card10, Card10, Card10Def);
         generate_readout_fn!(readout_card11, Card11, Card11Def);
+        generate_readout_fn!(readout_card10, Card10, Card10Def);
+        generate_readout_fn!(readout_card9, Card9, Card9Def);
         generate_readout_fn!(readout_card8, Card8, Card8Def);
 
         pub async fn read_out(
@@ -296,17 +323,20 @@ mod impl_shared {
             let card_type = CardType::from_siid(siid).ok_or(ReadoutError::CouldNotGetCardType)?;
 
             let res = match card_type {
-                CardType::Card8 => {
-                    ReadoutResult::Card8(self.readout_card8(preferences, siid).await?)
-                }
-                CardType::Card10 => {
-                    ReadoutResult::Card10(self.readout_card10(preferences, siid).await?)
+                CardType::ActiveCard => {
+                    ReadoutResult::ActiveCard(self.readout_activecard(preferences, siid).await?)
                 }
                 CardType::Card11 => {
                     ReadoutResult::Card11(self.readout_card11(preferences, siid).await?)
                 }
-                CardType::ActiveCard => {
-                    ReadoutResult::ActiveCard(self.readout_activecard(preferences, siid).await?)
+                CardType::Card10 => {
+                    ReadoutResult::Card10(self.readout_card10(preferences, siid).await?)
+                }
+                CardType::Card9 => {
+                    ReadoutResult::Card9(self.readout_card9(preferences, siid).await?)
+                }
+                CardType::Card8 => {
+                    ReadoutResult::Card8(self.readout_card8(preferences, siid).await?)
                 }
                 _ => return Err(ReadoutError::CardNotSupported(card_type)),
             };
@@ -365,7 +395,7 @@ mod impl_shared {
                     }
                     ReadoutPreference::Punches => {
                         satisfy(&mut carddef, BlockNeededIntention::Punches, self).await?
-                    },
+                    }
                     ReadoutPreference::CardExclusives => {
                         satisfy(&mut carddef, BlockNeededIntention::CardExclusives, self).await?
                     }
@@ -382,12 +412,16 @@ mod impl_shared {
     pub enum ReadoutPreference {
         CardPersonalData,
         Punches,
-        CardExclusives
+        CardExclusives,
     }
 
     impl ReadoutPreference {
         pub fn all() -> [Self; 3] {
-            return [ReadoutPreference::CardPersonalData, ReadoutPreference::Punches, ReadoutPreference::CardExclusives];
+            return [
+                ReadoutPreference::CardPersonalData,
+                ReadoutPreference::Punches,
+                ReadoutPreference::CardExclusives,
+            ];
         }
     }
 
@@ -396,10 +430,11 @@ mod impl_shared {
     #[cfg_attr(feature = "ts-rs", ts(export))]
     #[derive(Debug)]
     pub enum ReadoutResult {
-        Card8(Card8Def),
-        Card10(Card10Def),
-        Card11(Card11Def),
         ActiveCard(ActiveCardDef),
+        Card11(Card11Def),
+        Card10(Card10Def),
+        Card9(Card9Def),
+        Card8(Card8Def),
     }
 
     impl ReadoutResult {
@@ -469,9 +504,10 @@ mod impl_shared {
             type X = ReadoutResult;
 
             return match value {
+                X::ActiveCard(def) | X::Card11(def) => inner(def),
+                X::Card10(def) => inner(def),
+                X::Card9(def) => inner(def),
                 X::Card8(def) => inner(def),
-                X::Card10(def) | X::Card11(def) => inner(def),
-                X::ActiveCard(def) => inner(def),
             };
         }
     }

@@ -1,5 +1,5 @@
 /*
-    SPORTident Card-8 Memory Structure
+    SPORTident Card-9 Memory Structure
 
     Every integer is big endian encoded unless said differently in the desc.
 
@@ -14,25 +14,25 @@
     0x18..0x1B  SIID - SI3, SI2, SI1, SI0 - SI2..SI0 makes up the SIID (card number)
     0x1C        Prod date MONTH
     0x1D        Prod date YEAR (2000+x)
-    0x20..0x7F  Card personal data - PART1
+    0x20..0x37  Card personal data (Only first and last name)
+    0x38..0x7F  Punches
     ----            ----
     ---- BLOCK 0x01 ----
-    0x00..0x07  Card personal data - PART2
-    0x08..0x7F  Punches
+    0x00..0x7F  Punches
     ----            ----
 */
 
 use crate::{
     card::CardPersonalData,
     carddef::{BlockNeededIntention, BlockNeededResult, CardDefinition},
-    errors::{DeserializeBlockError, DeserializeCardPersonalDataError},
+    errors::DeserializeBlockError,
     extract_fixed,
     punch::Punch,
 };
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
-#[cfg_attr(feature = "ts-rs", ts(export, export_to = "SI8Block0.ts"))]
+#[cfg_attr(feature = "ts-rs", ts(export, export_to = "SI9Block0.ts"))]
 #[derive(Debug, Clone)]
 struct Block0 {
     uid: u32,
@@ -44,10 +44,9 @@ struct Block0 {
     siid: u32,
     prod_month: u8,
     prod_year: u8,
-    #[cfg_attr(feature = "serde", serde(with = "serde_big_array::BigArray"))]
-    #[cfg_attr(feature = "ts-rs", ts(type = "[number; 96]"))]
-    card_personal_data1: [u8; 96],
-    personal_data_finished: bool,
+    card_personal_data: [u8; 24],
+    punches: Vec<Punch>,
+    punches_finished: bool,
 }
 
 impl Block0 {
@@ -58,12 +57,27 @@ impl Block0 {
         let finish = Punch::deserialize_control_punch(&extract_fixed!(&data, 0x10..0x13))?;
         let last_visited = u16::from_be_bytes(extract_fixed!(&data, 0x14..0x15));
         let punch_count = data[0x16];
-        let siid = u32::from_be_bytes([0, data[25], data[26], data[27]]);
+        let mut siid_bytes = extract_fixed!(&data, 0x18..0x1B);
+        siid_bytes[0] = 0;
+        let siid = u32::from_be_bytes(siid_bytes);
         let prod_month = data[0x1C];
         let prod_year = data[0x1D];
-        let card_personal_data1 = extract_fixed!(&data, 0x20..0x7F);
-        let personal_data_finished =
-            [card_personal_data1[94], card_personal_data1[95]] == [0x00, 0x00];
+        let card_personal_data = extract_fixed!(&data, 0x20..0x37);
+
+        let mut punches_finished = false;
+        let mut punches: Vec<Punch> = Vec::new();
+        let punches_bytes = extract_fixed!(&data, 0x38..0x7F);
+
+        for punch_chunk in punches_bytes.chunks(4) {
+            let punch_chunk: &[u8; 4] = punch_chunk.try_into().unwrap(); // cant fail
+            // if its 0xEE 0xEE 0xEE 0xEE then there should be no more data left
+            if punch_chunk.iter().all(|&b| b == 0xEE) {
+                punches_finished = true;
+                break;
+            }
+
+            punches.push(Punch::deserialize(punch_chunk)?);
+        }
 
         return Ok(Self {
             uid,
@@ -75,47 +89,44 @@ impl Block0 {
             siid,
             prod_month,
             prod_year,
-            card_personal_data1,
-            personal_data_finished,
+            card_personal_data,
+            punches,
+            punches_finished,
         });
     }
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
-#[cfg_attr(feature = "ts-rs", ts(export, export_to = "SI8Block1.ts"))]
+#[cfg_attr(feature = "ts-rs", ts(export, export_to = "SI9Block1.ts"))]
 #[derive(Debug, Clone)]
 struct Block1 {
-    card_personal_data2: [u8; 8],
     punches: Vec<Punch>,
 }
 
 impl Block1 {
     pub fn deserialize(data: [u8; 128]) -> Result<Self, DeserializeBlockError> {
-        let card_personal_data2: [u8; 8] = data[..8].try_into().unwrap();
-        let punches_bytes: [u8; 120] = data[8..].try_into().unwrap();
-
         let mut punches: Vec<Punch> = Vec::new();
-        for punch_chunk in punches_bytes.chunks(4) {
-            let punch_chunk: &[u8; 4] = punch_chunk.try_into().unwrap();
-            if *punch_chunk == [0xEE, 0xEE, 0xEE, 0xEE] {
+
+        for punch_chunk in data.chunks(4) {
+            let punch_chunk: &[u8; 4] = punch_chunk.try_into().unwrap(); // cant fail
+            // if its 0xEE 0xEE 0xEE 0xEE then there should be no more data left
+            if punch_chunk.iter().all(|&b| b == 0xEE) {
                 break;
             }
+
             punches.push(Punch::deserialize(punch_chunk)?);
         }
 
-        return Ok(Self {
-            card_personal_data2,
-            punches,
-        });
+        return Ok(Self { punches });
     }
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[cfg_attr(feature = "ts-rs", ts(export))]
-#[derive(Debug)]
-pub struct Card8Def {
+#[derive(Debug, Clone)]
+pub struct Card9Def {
     block0: Option<Block0>,
     block1: Option<Block1>,
 }
@@ -123,25 +134,25 @@ pub struct Card8Def {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[cfg_attr(feature = "ts-rs", ts(export))]
-#[derive(Debug)]
-pub struct Card8Exclusives {
+#[derive(Debug, Clone)]
+pub struct Card9Exclusives {
     pub uid: u32,
     pub last_visited_station_code: u16,
-    pub prod_date_month: u8,
-    pub prod_date_year: u32,
+    pub production_date_month: u8,
+    pub production_date_year: u32,
 }
 
-impl CardDefinition for Card8Def {
+impl CardDefinition for Card9Def {
     const HAS_CARD_EXCLUSIVES: bool = true;
-    type CardExclusivesType = Card8Exclusives;
+    type CardExclusivesType = Card9Exclusives;
     fn get_exclusives(&self) -> Option<Self::CardExclusivesType> {
         let block0 = self.block0.as_ref()?;
 
         return Some(Self::CardExclusivesType {
             uid: block0.uid,
             last_visited_station_code: block0.last_visited,
-            prod_date_month: block0.prod_month,
-            prod_date_year: 2000 + block0.prod_year as u32,
+            production_date_month: block0.prod_month,
+            production_date_year: 2000 + block0.prod_year as u32,
         });
     }
 
@@ -162,23 +173,27 @@ impl CardDefinition for Card8Def {
 
     fn get_personal_data(
         &self,
-    ) -> Option<Result<CardPersonalData, DeserializeCardPersonalDataError>> {
-        let block0 = &self.block0.as_ref()?;
-        let mut personal_data_buffer: Vec<u8> = Vec::new();
-        personal_data_buffer.extend_from_slice(&block0.card_personal_data1);
-
-        if !block0.personal_data_finished {
-            let block1 = &self.block1.as_ref()?;
-            personal_data_buffer.extend_from_slice(&block1.card_personal_data2);
-        }
-
-        return Some(CardPersonalData::deserialize(&personal_data_buffer));
+    ) -> Option<
+        Result<crate::card::CardPersonalData, crate::errors::DeserializeCardPersonalDataError>,
+    > {
+        let block0 = self.block0.as_ref()?;
+        return Some(CardPersonalData::deserialize(&block0.card_personal_data));
     }
 
     fn get_punches(&self) -> Option<Vec<Punch>> {
-        let block1 = &self.block1.as_ref()?;
+        let block0 = self.block0.as_ref()?;
 
-        Some(block1.punches.clone())
+        if block0.punches_finished {
+            return Some(block0.punches.clone());
+        }
+
+        let block1 = self.block1.as_ref()?;
+
+        let mut punches: Vec<Punch> = Vec::new();
+        punches.extend_from_slice(&block0.punches.clone());
+        punches.extend_from_slice(&block1.punches.clone());
+
+        return Some(punches);
     }
 
     fn get_punch_count(&self) -> Option<u8> {
@@ -220,25 +235,21 @@ impl CardDefinition for Card8Def {
 
     fn block_needed(&self, intention: &super::BlockNeededIntention) -> super::BlockNeededResult {
         match intention {
-            BlockNeededIntention::CardExclusives => match &self.block0 {
-                Some(_) => BlockNeededResult::NoNeed,
-                None => BlockNeededResult::Need(0),
-            },
-            BlockNeededIntention::CardPersonalData => {
-                if let Some(block0) = &self.block0 {
-                    if !block0.personal_data_finished && self.block1.is_none() {
-                        return BlockNeededResult::Need(1);
-                    } else {
-                        return BlockNeededResult::NoNeed;
-                    }
-                } else {
-                    return BlockNeededResult::Need(0);
+            BlockNeededIntention::CardExclusives | BlockNeededIntention::CardPersonalData => {
+                match &self.block0 {
+                    Some(_) => BlockNeededResult::NoNeed,
+                    None => BlockNeededResult::Need(0),
                 }
             }
-            BlockNeededIntention::Punches => match &self.block1 {
-                Some(_) => BlockNeededResult::NoNeed,
-                None => BlockNeededResult::Need(1),
-            },
+            BlockNeededIntention::Punches => {
+                if let Some(block0) = &self.block0 {
+                    if !block0.punches_finished && self.block1.is_none() {
+                        return BlockNeededResult::Need(1);
+                    }
+                    return BlockNeededResult::NoNeed;
+                }
+                return BlockNeededResult::Need(0);
+            }
         }
     }
 }
