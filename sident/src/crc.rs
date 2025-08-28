@@ -1,3 +1,4 @@
+/// Calculates unsigned 16-bit CRC.
 pub fn crc16(data: &[u8]) -> u16 {
     const POLY: u16 = 0x8005;
     const BITF: u16 = 0x8000;
@@ -52,6 +53,7 @@ pub fn crc16(data: &[u8]) -> u16 {
     tmp & 0xFFFF
 }
 
+/// Calculates unsigned 8-bit CRC.
 pub fn crc8(data: &[u8]) -> u8 {
     const POLY: u8 = 0x39;
 

@@ -8,6 +8,7 @@ use crate::{
     time::{DayOfWeek, WeekOfMonth},
 };
 
+/// Timing part of the punch
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[cfg_attr(feature = "ts-rs", ts(export))]
@@ -19,6 +20,7 @@ pub struct PunchTime {
 }
 
 impl PunchTime {
+    /// Converts the time,day,week timing to absolute seconds
     pub fn to_absolute_seconds(&self) -> i64 {
         let week = self.week as i64;
         let day = self.day as i64;
@@ -29,6 +31,9 @@ impl PunchTime {
         days_in_total * 86_400 + seconds_in_day
     }
 
+    /// Duration since other Punch
+    ///
+    /// * `other` - Other punch
     pub fn duration_since(&self, other: &Self) -> chrono::Duration {
         let self_abs = self.to_absolute_seconds();
         let other_abs = other.to_absolute_seconds();
@@ -41,11 +46,14 @@ impl PunchTime {
 #[cfg_attr(feature = "ts-rs", ts(export))]
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Punch {
-    pub station_code: u8,
+    pub station_code: u16,
     pub punch_time: PunchTime,
 }
 
 impl Punch {
+    /// Checks if data is null and deserializes a Punch
+    ///
+    /// * `data` - Punch data
     pub fn deserialize_control_punch(
         data: &[u8; 4],
     ) -> Result<Option<Self>, DeserializePunchError> {
@@ -56,6 +64,10 @@ impl Punch {
         return Ok(Some(Self::deserialize(data)?));
     }
 
+    /// Deserializes a Punch
+    ///
+    /// * `data` - Punch data
+    ///
     /// Source: SPORTident.Communication.Communication._parseMemoryRecord
     // TODO: look at the Communication.AllowCardReadSubSeconds thing
     pub fn deserialize(data: &[u8; 4]) -> Result<Self, DeserializePunchError> {
@@ -74,7 +86,8 @@ impl Punch {
             return DeserializePunchError::InvalidDay;
         })?;
 
-        let station_code = ((td_byte & 64) << 2) + cn_byte;
+        let high = (td_byte & 0b1100_0000) >> 6; // bits 6–7 → bits 0–1
+        let station_code = ((high as u16) << 8) | (cn_byte as u16);
 
         let time_punched_seconds = u16::from_be_bytes([th_byte, tl_byte]);
         let mut time_punched =

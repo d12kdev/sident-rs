@@ -7,12 +7,26 @@ use std::fmt::Debug;
 
 pub mod si10;
 pub mod si8;
+/// EXPERIMENTAL! SI9 has not been tested yet.
 pub mod si9;
+// EXPERIMENTAL! SI6 has not been tested yet.
+//pub mod si6;
 pub mod siac;
 
+/// EXPERIMENTAL! SI11 has not been tested yet.
 pub mod si11 {
     /// Card11 is a passive card with active feedback. Thanks to the feedback Card11 has battery and shares the structure with SIAC
     pub type Card11Def = super::siac::ActiveCardDef;
+}
+
+/// EXPERIMENTAL! ComCardUp has not been tested yet.
+pub mod comcardup {
+    pub type ComCardUpDef = super::si8::Card8Def;
+}
+
+/// EXPERIMENTAL! ComCardPro has not been tested yet.
+pub mod comcardpro {
+    pub type ComCardProDef = super::si10::Card10Def;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

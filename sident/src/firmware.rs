@@ -9,8 +9,8 @@ pub struct FirmwareVersion {
 }
 
 impl FirmwareVersion {
-    pub fn deserialize(input: [u8; 3]) -> Self {
-        Self { inner: input }
+    pub fn deserialize(input: &[u8; 3]) -> Self {
+        Self { inner: *input }
     }
 
     pub fn to_string(&self) -> Result<String, FirmwareVersionCodecError> {

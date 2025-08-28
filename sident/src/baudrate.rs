@@ -1,7 +1,9 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq, num_enum::TryFromPrimitive)]
 #[repr(u8)]
 pub enum Baudrate {
+    /// **38400** baud
     High = 1,
+    /// **4800** baud
     Low = 0,
 }
 

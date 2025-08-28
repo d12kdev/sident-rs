@@ -377,9 +377,7 @@ impl CardDefinition for Card10Def {
                     match block {
                         None => return BlockNeededResult::Need(block_id),
                         Some(block) => {
-                            if !block.punches_finished {
-                                return BlockNeededResult::Need(block_id + 1);
-                            } else {
+                            if block.punches_finished {
                                 return BlockNeededResult::NoNeed;
                             }
                         }

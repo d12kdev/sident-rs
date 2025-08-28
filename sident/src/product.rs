@@ -1,9 +1,10 @@
-/// The type of the station
+/// The model of the station
+///
 /// Source: SPORTident.Communication.ProductType
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[cfg_attr(feature = "ts-rs", ts(export))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, num_enum::TryFromPrimitive, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, num_enum::TryFromPrimitive)]
 #[repr(u16)]
 pub enum ProductModel {
     SimSrr = 0x21,
@@ -15,7 +16,6 @@ pub enum ProductModel {
     Bsf8 = 0x8198,
     Bsf9 = 0x819E,
     Bsf8Ostarter = 0x8190,
-    #[default]
     Bsm8 = 0x9198,
     Bsm9 = 0x919F,
     Bs11LoopAntenna = 0x8D99,

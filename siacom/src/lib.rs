@@ -1,6 +1,9 @@
 #[cfg(not(target_os = "android"))]
 compile_error!("SIACom is only compilable for Android!");
 
+// TODO: Migrate to nusb 0.2
+
+
 use std::{
     io,
     os::fd::{FromRawFd, OwnedFd},
@@ -24,6 +27,10 @@ use tokio::{
     io::{AsyncRead, AsyncWrite},
     sync::Mutex,
 };
+
+use crate::errors::SiacomError;
+
+pub mod errors;
 
 const SI_VID: u16 = 0x10C4;
 const SI_PID: u16 = 0x800A;
@@ -62,6 +69,8 @@ const REQCODE_SET_BAUDRATE: u8 = 0x1E;
 const REQCODE_SET_LINE_CTL: u8 = 0x03;
 const REQCODE_IFC_ENABLE: u8 = 0x00;
 
+const FLAG_IMMUTABLE: i32 = 0x04000000;
+
 const DEFAULT_BAUD: u32 = 38400;
 
 struct InnerSIAndroidCom {
@@ -71,7 +80,7 @@ struct InnerSIAndroidCom {
 }
 
 impl InnerSIAndroidCom {
-    pub async fn new() -> io::Result<Self> {
+    pub async fn new() -> Result<Self, SiacomError> {
         info!("Creating SI Android Communicaiton");
         let fd = tokio::task::spawn_blocking(move || -> io::Result<i32> {
             info!("Getting NDK Context");
@@ -239,7 +248,7 @@ impl InnerSIAndroidCom {
                         JValue::from(&context),
                         jint::from(0).into(),
                         JValue::from(&p_intent_obj),
-                        jint::from(0x04000000).into(), // FLAG_IMMUTABLE
+                        jint::from(FLAG_IMMUTABLE).into(),
                     ],
                 )
                 .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("{e}")))?
@@ -335,12 +344,9 @@ impl InnerSIAndroidCom {
             }
         }
 
-        let in_ep = in_ep
-            .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "No bulk IN endpoint found"))?;
-        let out_ep = out_ep
-            .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "No bulk OUT endpoint found"))?;
-        let iface_num = iface_num
-            .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "No suitable interface found"))?;
+        let in_ep = in_ep.ok_or(SiacomError::NoBulkInEndpoint)?;
+        let out_ep = out_ep.ok_or(SiacomError::NoBulkOutEndpoint)?;
+        let iface_num = iface_num.ok_or(SiacomError::NoSuitableInterface)?;
 
         info!("Claiming interface");
         let iface = device.claim_interface(iface_num)?;
@@ -373,7 +379,7 @@ impl InnerSIAndroidCom {
             .await
             .into_result()?;
 
-        self.set_baud_rate(DEFAULT_BAUD).await?;
+        self.set_baudrate(DEFAULT_BAUD).await?;
 
         let mut config: u16 = 0;
         // 8 data bits
@@ -419,7 +425,7 @@ impl InnerSIAndroidCom {
         return Ok(bytes_read);
     }
 
-    pub async fn set_baud_rate(&self, baud: u32) -> io::Result<()> {
+    pub async fn set_baudrate(&self, baud: u32) -> io::Result<()> {
         info!("Setting baudrate to {}", baud);
 
         info!("Sending baudrate config");
@@ -452,7 +458,8 @@ pub struct SIAndroidCom {
 }
 
 impl SIAndroidCom {
-    pub async fn new() -> io::Result<Self> {
+    /// Attempts to connect to the SPORTident USB to UART device
+    pub async fn new() -> Result<Self, SiacomError> {
         Ok(Self {
             inner: Arc::new(Mutex::new(InnerSIAndroidCom::new().await?)),
             write_fut: None,
@@ -462,13 +469,26 @@ impl SIAndroidCom {
         })
     }
 
-    pub async fn set_baud_rate(&mut self, baud: u32) -> io::Result<()> {
+    /// Sets the communication baudrate, **not the protocol one**
+    pub async fn set_baudrate(&mut self, baud: u32) -> io::Result<()> {
         let guard = self.inner.lock().await;
-        guard.set_baud_rate(baud).await
+        guard.set_baudrate(baud).await
     }
 
-    // i vibecoded this because idk what i was doing
+    // tbh i vibecoded this because idk what i was doing
     // the commit that added this comment will be just about removing the annoying comments the model generated
+    // edit: im trying to understand this and at least learn from it. i hate ai, but sometimes i can't find or come up with how to do something.
+    /// Attempts to read data into the provided buffer
+    ///
+    /// How this black magic works:
+    ///
+    /// 1 - **Buffered data available**
+    ///     - If there's the needed data already available in the internal buffer it copies it
+    ///
+    /// 2 - **No buffered data available**
+    ///     - If internal buffer is empty it starts a read_fut that will read a 64byte chunk and store it to the internal buffer
+    ///     and then the thing from 1 will happen
+    ///     
     fn poll_read_internal(
         mut self: Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
@@ -477,6 +497,7 @@ impl SIAndroidCom {
         loop {
             let mut this = self.as_mut().project();
 
+            // if the data is already in the internal buffer
             if *this.read_pos < this.read_buf.len() {
                 let available = &this.read_buf[*this.read_pos..];
                 let to_copy = available.len().min(buf.remaining());
@@ -503,6 +524,7 @@ impl SIAndroidCom {
                 this.read_fut.set(Some(Box::pin(fut)));
             }
 
+            // if read_fut is some then poll it's status and propagate it to the return
             if let Some(fut) = this.read_fut.as_mut().as_pin_mut() {
                 match fut.poll(cx) {
                     Poll::Ready(Ok(data)) => {

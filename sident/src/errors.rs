@@ -32,7 +32,8 @@ _sident_err_gen!({
     DeserializeBlockError => (DeserializeBlockError, "deserialize block error: {0}"),
     ConnectionOperationError => (ConnectionOperationError, "connection op error: {0}"),
     ReadoutResultTransformationError => (ReadoutResultTransformationError, "readout result transf error: {0}"),
-    SimpleActionError => (SimpleActionError, "simple action error: {0}")
+    SimpleActionError => (SimpleActionError, "simple action error: {0}"),
+    IoError => (std::io::Error, "io error: {0}")
 });
 
 #[derive(Debug, Error)]
@@ -40,6 +41,9 @@ pub enum NewConnectionError {
     #[cfg(not(target_os = "android"))]
     #[error("SerialPort error: {0}")]
     SerialportError(#[from] tokio_serial::Error),
+    #[cfg(target_os = "android")]
+    #[error("SIACom error: {0}")]
+    SiacomError(#[from] siacom::errors::SiacomError),
     #[error("IO error: {0}")]
     IoError(#[from] std::io::Error),
     #[error("ReceiveRawPacket error: {0}")]
@@ -131,10 +135,20 @@ pub enum ReadoutError {
     FeedBlockError(#[from] FeedBlockError),
     #[error("Expected {0} but got {1}")]
     ExpectedButGot(CardType, CardType),
-    #[error("Deserialize packet error: {0}")]
+    #[error("Receive packet error: {0}")]
     ReceivePacketError(#[from] ReceivePacketError),
+    #[error("Receieve RawPacket error: {0}")]
+    ReceiveRawPacketError(#[from] ReceiveRawPacketError),
+    #[error("Got NAK response")]
+    NakResponse,
+    #[error("Got unexpected packet")]
+    UnexpectedPacket,
+    #[error("Card removed while reading")]
+    CardRemoved,
     #[error("Could not get the card type")]
     CouldNotGetCardType,
+    #[error("deserialize packet error: {0}")]
+    DeserializePacketError(#[from] DeserializePacketError),
     #[error("io error {0}")]
     IoError(#[from] std::io::Error),
 }
@@ -159,6 +173,8 @@ pub enum DeserializeCardPersonalDataError {
     RequiredFieldsAreEmpty,
     #[error("From UTF8 error: {0}")]
     FromUtf8Error(#[from] std::string::FromUtf8Error),
+    #[error("Data is too long")]
+    DataTooLong,
 }
 
 #[derive(Debug, Error)]

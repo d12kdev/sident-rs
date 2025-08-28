@@ -15,10 +15,15 @@ use crate::{
 };
 
 pub mod consts {
+    /// Start of text - first byte transmitted
     pub const STX: u8 = 0x02;
+    /// End of text - last byte transmitted
     pub const ETX: u8 = 0x03;
+    /// Positive handshake result
     pub const ACK: u8 = 0x06;
+    /// Negative handshake result
     pub const NAK: u8 = 0x15;
+    /// Delimiter inserted before data characters 00-1F (base protocol)
     pub const DLE: u8 = 0x10;
 }
 
@@ -28,6 +33,7 @@ pub enum SICodecTimeout {
     Finite(Duration),
 }
 
+/// Codec utils for SPORTident
 #[derive(Debug, Default)]
 pub struct SICodec;
 
@@ -74,7 +80,6 @@ impl SICodec {
     }
 
     pub fn encode_iso_8859_1(s: &str) -> Option<Vec<u8>> {
-        // TODO: result may be better
         s.chars()
             .map(|c| {
                 let code = c as u32;
@@ -90,14 +95,18 @@ impl SICodec {
         return String::from_utf8(out);
     }
 
+    /// Alias for `StationboundPacket::serialize()`
+    ///
+    /// * `packet` - Packet to be serialized
     pub fn serialize_packet<P: StationboundPacket>(packet: &P) -> Vec<u8> {
-        let mut buffer: Vec<u8> = Vec::new();
-        buffer.extend_from_slice(&packet.serialize());
-        buffer
+        packet.serialize()
     }
 
+    /// Deserializes raw packet from data instead of reader
+    ///
+    /// * `data` - Data
     pub async fn deserialize_raw_packet(
-        data: &Vec<u8>,
+        data: &[u8],
     ) -> Result<RawPacket, DeserializeRawPacketError> {
         let cursor = Cursor::new(data);
         Self::deserialize_raw_packet_reader(
@@ -108,6 +117,11 @@ impl SICodec {
         .await
     }
 
+    /// Deserializes raw packet from async reader
+    ///
+    /// * `reader` - Reader (**async**)
+    /// * `stx_timeout` - Timeout for the `STX` byte
+    /// * `timeout` - Timeout for other bytes
     pub async fn deserialize_raw_packet_reader<R>(
         mut reader: R,
         stx_timeout: SICodecTimeout,

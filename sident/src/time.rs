@@ -5,7 +5,7 @@ use num_enum::TryFromPrimitive;
 pub struct SIDate;
 
 impl SIDate {
-    pub fn deserialize(input: [u8; 3]) -> Option<NaiveDate> {
+    pub fn deserialize(input: &[u8; 3]) -> Option<NaiveDate> {
         let year = (input[0] as i32) + 2000;
         let month = input[1] as u32;
         let day = input[2] as u32;

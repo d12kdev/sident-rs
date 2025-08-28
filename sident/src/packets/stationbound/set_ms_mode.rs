@@ -3,6 +3,7 @@ use crate::{
     packet::{Packet, StationboundPacket},
 };
 
+/// Set M/S mode
 #[derive(Debug)]
 pub struct SetMsMode {
     pub mode: MsMode,
@@ -18,6 +19,7 @@ impl StationboundPacket for SetMsMode {
     }
 }
 
+/// Set M/S mode for base protocol
 #[derive(Debug)]
 pub struct BaseSetMsMode {
     pub mode: MsMode,

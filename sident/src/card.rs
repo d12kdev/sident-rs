@@ -1,9 +1,11 @@
-use crate::{codec::SICodec, errors::DeserializeCardPersonalDataError};
+use crate::{codec::SICodec, errors::DeserializeCardPersonalDataError, extract_fixed};
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[cfg_attr(feature = "ts-rs", ts(export))]
 #[derive(Debug, Clone)]
+/// Personal data of the runner
+///
 /// Source: SPORTident.CardPersonalData
 pub struct CardPersonalData {
     pub first_name: Option<String>,
@@ -23,6 +25,70 @@ pub struct CardPersonalData {
 }
 
 impl CardPersonalData {
+    /// Deserializes `CardPersonalData` from SI6 format
+    ///
+    /// * `data` - Data
+    ///
+    /// Source: SPORTident.Communication.Communication._cardParseCard6PersonalData
+    pub fn deserialize_card_6(data: &[u8; 204]) -> Result<Self, DeserializeCardPersonalDataError> {
+        let data = SICodec::replace_printer_charset_bytes(data);
+
+        let surname_bytes = &extract_fixed!(&data, 0x00..0x13);
+        let first_name_bytes = &extract_fixed!(&data, 0x14..0x27);
+        let country_bytes = &extract_fixed!(&data, 0x28..0x2B);
+        let club_bytes = &extract_fixed!(&data, 0x2C..0x4F);
+        //let user_id_bytes = &extract_fixed!(&data, 0x50..0x5F);
+        let phone_bytes = &extract_fixed!(&data, 0x60..0x6F);
+        let mail_bytes = &extract_fixed!(&data, 0x70..0x93);
+        let street_bytes = &extract_fixed!(&data, 0x94..0xA7);
+        let city_bytes = &extract_fixed!(&data, 0xA8..0xB7);
+        let zip_bytes = &extract_fixed!(&data, 0xB8..0xBF);
+        let gender_bytes = &extract_fixed!(&data, 0xC0..0xC3);
+        let birthdate_bytes = &extract_fixed!(&data, 0xC4..0xCB);
+
+        fn d(buf: &[u8]) -> Result<String, std::string::FromUtf8Error> {
+            SICodec::decode_iso_8859_1(buf)
+        }
+
+        let surname = d(surname_bytes)?;
+        let first_name = d(first_name_bytes)?;
+        let country = d(country_bytes)?;
+        let club = d(club_bytes)?;
+        let phone = d(phone_bytes)?;
+        let mail = d(mail_bytes)?;
+        let street = d(street_bytes)?;
+        let city = d(city_bytes)?;
+        let zip = d(zip_bytes)?;
+        let gender = d(gender_bytes)?;
+        let birthdate = d(birthdate_bytes)?;
+
+        fn t(str: String) -> Option<String> {
+            if str.is_empty() {
+                return None;
+            }
+            return Some(str);
+        }
+
+        return Ok(Self {
+            first_name: t(first_name),
+            last_name: t(surname),
+            phone: t(phone),
+            city: t(city),
+            club: t(club),
+            country: t(country),
+            birthdate: t(birthdate),
+            email: t(mail),
+            gender: t(gender),
+            street: t(street),
+            zipcode: t(zip),
+        });
+    }
+
+    /// Deserializes `CardPersonalData` from SI8+ format
+    ///
+    /// * `data` - Data
+    ///
+    /// Source: SPORTident.Communication.Communication._cardParseGenericPersonalData
     pub fn deserialize(data: &[u8]) -> Result<Self, DeserializeCardPersonalDataError> {
         fn nonempty_or_none(s: &str) -> Option<String> {
             let trimmed = s.trim();
@@ -33,17 +99,21 @@ impl CardPersonalData {
             }
         }
 
-        let data = &SICodec::replace_printer_charset_bytes(data);
-        let mut decoded = SICodec::decode_iso_8859_1(data)?;
+        if data.len() > 104 {
+            return Err(DeserializeCardPersonalDataError::DataTooLong);
+        }
 
+        // replace the printer charset bytes
+        let data = SICodec::replace_printer_charset_bytes(&data);
+        // decode bytes to string via iso8859-1
+        let mut decoded = SICodec::decode_iso_8859_1(&data)?;
+
+        // null terminator support
         if let Some(pos) = decoded.find('\0') {
             decoded.truncate(pos);
         }
 
-        if decoded.len() > 128 {
-            decoded.truncate(128);
-        }
-
+        // max 11 data cells
         let mut semicolon_count = 0;
         let mut limit_index = decoded.len();
         for (i, ch) in decoded.char_indices() {
@@ -126,6 +196,10 @@ pub enum CardType {
 }
 
 impl CardType {
+    /// Tries to get `CardType` from SIID
+    ///
+    /// * `siid` - SIID
+    ///
     /// Source: SPORTident.Common.Helper.GetCardTypeFromSiid(uint)
     pub fn from_siid(siid: u32) -> Option<CardType> {
         match siid {

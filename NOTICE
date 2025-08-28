@@ -1,0 +1,9 @@
+SPORTident Communication (sident) Crate for Rust
+Copyright 2025 David K (d12kdev)
+
+This project was created by d12kdev.
+If you use this crate, please credit me (d12kdev) in your documentation or About page.
+
+Disclaimer: This project is not affiliated with, endorsed by, or officially supported by SPORTident GmbH.  
+SPORTident® is a registered trademark of SPORTident GmbH.  
+This crate is a community project built to facilitate interaction with SPORTident devices in Rust, including support for Android and other platforms.

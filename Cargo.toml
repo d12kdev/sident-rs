@@ -4,3 +4,5 @@ members = [
     "sident",
     "siacom"
 ]
+package.license = "Apache-2.0"
+package.license-file = "LICENSE"

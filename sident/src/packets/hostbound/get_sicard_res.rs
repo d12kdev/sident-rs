@@ -3,7 +3,7 @@ use crate::packet::{HostboundPacket, Packet};
 #[derive(Debug)]
 pub struct GetSICardNewerResponse {
     pub station_code: u16,
-    pub block_number: u8, // TODO: maybe enum? 2
+    pub block_number: u8,
     pub data: [u8; 128],
 }
 

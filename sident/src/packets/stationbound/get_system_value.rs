@@ -1,11 +1,11 @@
 use crate::{
-    SystemValueDataAddressAndLength,
+    addr_len::AddrLen,
     packet::{Packet, StationboundPacket},
 };
 
 #[derive(Debug)]
 pub struct GetSystemValue {
-    pub addr_len: SystemValueDataAddressAndLength,
+    pub addr_len: AddrLen,
 }
 
 impl Packet for GetSystemValue {
@@ -14,6 +14,6 @@ impl Packet for GetSystemValue {
 
 impl StationboundPacket for GetSystemValue {
     fn payload(&self) -> Vec<u8> {
-        vec![self.addr_len.address(), self.addr_len.length()]
+        vec![self.addr_len.address_byte(), self.addr_len.length_byte()]
     }
 }

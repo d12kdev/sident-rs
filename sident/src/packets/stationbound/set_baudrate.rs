@@ -3,6 +3,7 @@ use crate::{
     packet::{Packet, StationboundPacket},
 };
 
+/// Set baudrate
 #[derive(Debug)]
 pub struct SetBaudrate {
     pub baudrate: Baudrate,
@@ -18,6 +19,7 @@ impl StationboundPacket for SetBaudrate {
     }
 }
 
+/// Set baudrate for base protocol
 #[derive(Debug)]
 pub struct BaseSetBaudrate {
     pub baudrate: Baudrate,

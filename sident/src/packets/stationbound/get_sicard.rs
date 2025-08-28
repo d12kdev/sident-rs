@@ -2,7 +2,7 @@ use crate::packet::{Packet, StationboundPacket};
 
 #[derive(Debug)]
 pub struct GetSICardNewer {
-    pub block_number: u8, // TODO: maybe enum?
+    pub block_number: u8,
 }
 
 impl Packet for GetSICardNewer {
