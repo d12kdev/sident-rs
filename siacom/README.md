@@ -1,5 +1,7 @@
 # SPORTident Android Communication Library
 
+**NOTE: Just migrated to nusb 2.0, but not tested!**
+
 ⚠️ **THIS CRATE COMPILES ONLY FOR ANDROID TARGETS** ⚠️  
 *That means you should add `siacom` as a dependency **only** when compiling for Android (`target.'cfg(target_os = "android")'.dependencies`).*
 

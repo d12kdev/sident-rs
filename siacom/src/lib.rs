@@ -1,15 +1,12 @@
 #[cfg(not(target_os = "android"))]
 compile_error!("SIACom is only compilable for Android!");
 
-// TODO: Migrate to nusb 0.2
-
-
 use std::{
     io,
     os::fd::{FromRawFd, OwnedFd},
     pin::Pin,
     sync::Arc,
-    task::Poll,
+    task::Poll, time::Duration,
 };
 
 use futures::future::BoxFuture;
@@ -20,8 +17,7 @@ use jni::{
 };
 use log::info;
 use nusb::{
-    Device, Interface,
-    transfer::{ControlOut, ControlType, Direction, EndpointType, Recipient, RequestBuffer},
+    descriptors::TransferType, transfer::{Buffer, Bulk, ControlOut, ControlType, Direction, In, Out, Recipient}, Device, Endpoint, Interface
 };
 use tokio::{
     io::{AsyncRead, AsyncWrite},
@@ -75,8 +71,8 @@ const DEFAULT_BAUD: u32 = 38400;
 
 struct InnerSIAndroidCom {
     interface: Interface,
-    in_ep: u8,
-    out_ep: u8,
+    in_ep: Endpoint<Bulk, In>,
+    out_ep: Endpoint<Bulk, Out>,
 }
 
 impl InnerSIAndroidCom {
@@ -316,7 +312,7 @@ impl InnerSIAndroidCom {
         let owned_fd = unsafe { OwnedFd::from_raw_fd(fd) };
 
         info!("Creating Device");
-        let device = Device::from_fd(owned_fd)?;
+        let device = Device::from_fd(owned_fd).await?;
         info!("Getting config");
         let config = device.active_configuration()?;
 
@@ -327,7 +323,7 @@ impl InnerSIAndroidCom {
         for iface_g in config.interfaces() {
             for alt_setings in iface_g.alt_settings() {
                 for ep in alt_setings.endpoints() {
-                    if ep.transfer_type() == EndpointType::Bulk {
+                    if ep.transfer_type() == TransferType::Bulk {
                         match ep.direction() {
                             Direction::In => in_ep = Some(ep.address()),
                             Direction::Out => out_ep = Some(ep.address()),
@@ -349,7 +345,10 @@ impl InnerSIAndroidCom {
         let iface_num = iface_num.ok_or(SiacomError::NoSuitableInterface)?;
 
         info!("Claiming interface");
-        let iface = device.claim_interface(iface_num)?;
+        let iface = device.claim_interface(iface_num).await?;
+
+        let in_ep = iface.endpoint(in_ep)?;
+        let out_ep = iface.endpoint(out_ep)?;
 
         let this = Self {
             interface: iface,
@@ -375,9 +374,8 @@ impl InnerSIAndroidCom {
                 value: 0x0001, // UART_ENABLE
                 index: self.interface.interface_number() as u16,
                 data: &[],
-            })
-            .await
-            .into_result()?;
+            }, Duration::from_millis(100))
+            .await?;
 
         self.set_baudrate(DEFAULT_BAUD).await?;
 
@@ -394,30 +392,23 @@ impl InnerSIAndroidCom {
                 value: config,
                 index: self.interface.interface_number() as u16,
                 data: &[],
-            })
-            .await
-            .into_result()?;
+            }, Duration::from_millis(100))
+            .await?;
 
         return Ok(());
     }
 
     async fn bulkwrt(&mut self, buf: &[u8]) -> io::Result<usize> {
-        let rbuf: Vec<u8> = Vec::from(buf);
-        let res = self
-            .interface
-            .bulk_out(self.out_ep, rbuf)
-            .await
-            .into_result()?;
-        return Ok(res.actual_length());
+        let rbuf = Buffer::from(buf.to_vec());
+        self.out_ep.submit(rbuf);
+        let compl = self.out_ep.next_complete().await;
+        return Ok(compl.actual_len);
     }
 
     async fn bulkrd(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        let rbuf = RequestBuffer::new(buf.len());
-        let res = self
-            .interface
-            .bulk_in(self.in_ep, rbuf)
-            .await
-            .into_result()?;
+        let rbuf = Buffer::new(buf.len());
+        self.in_ep.submit(rbuf);
+        let res = self.in_ep.next_complete().await.into_result()?;
         let bytes_read = res.len();
         let dest_slice = &mut buf[..bytes_read];
         dest_slice.copy_from_slice(&res);
@@ -437,9 +428,8 @@ impl InnerSIAndroidCom {
                 value: 0,
                 index: self.interface.interface_number() as u16,
                 data: &baud.to_le_bytes(),
-            })
-            .await
-            .into_result()?;
+            }, Duration::from_millis(100))
+            .await?;
         info!("Baudrate config sent");
 
         return Ok(());
